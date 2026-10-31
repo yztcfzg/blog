@@ -4,7 +4,7 @@
       <h1 class="hero__name">{{ site.author }}</h1>
       <p class="hero__desc">{{ site.description }}</p>
 
-      <p class="hero__meta">{{ metaText }}</p>
+      <p v-if="metaText" class="hero__meta">{{ metaText }}</p>
 
       <div class="hero__links">
         <a v-if="site.links.github" :href="site.links.github" target="_blank" rel="noopener" class="hero__link">
@@ -19,7 +19,7 @@
       <PostRow v-for="post in allPosts" :key="post.slug" :post="post" />
     </div>
 
-    <p v-else class="empty">还没有文章。去 content/posts 里写第一篇吧。</p>
+    <p v-else class="empty">还没有文章。</p>
   </div>
 </template>
 
@@ -33,7 +33,7 @@ const rssUrl = `${import.meta.env.BASE_URL}rss.xml`
 
 const metaText = computed(() => {
   const latest = allPosts[0]
-  if (!latest) return '0 篇文章'
+  if (!latest) return ''
   return `${allPosts.length} 篇文章 · 最后更新 ${latest.dateText}`
 })
 </script>

@@ -336,8 +336,7 @@ a.tag:hover {
 }
 
 .empty {
-  padding: 64px 0;
-  text-align: center;
+  padding: 44px 0;
   color: var(--text-3);
   font-size: 14.5px;
 }

@@ -39,6 +39,5 @@ build/
 
 ### 本地临时文件 ###
 .tmp/
-### IDE / 工具元数据 ###
+### IDE ###
 .idea/
-.workbuddy/
