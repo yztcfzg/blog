@@ -36,7 +36,7 @@ GitHub Pages 只做一件事：把仓库里的文件当静态资源发出去。�
 hash 模式的 URL 长这样：
 
 ```text
-https://cuhklyc.github.io/my_blog/#/post/hello-world
+https://yztcfzg.github.io/my_blog/#/post/hello-world
 ```
 
 多了一个 `#`，但换来的是零配置、零故障、永久有效。对一个个人博客来说，这笔交易很划算。

@@ -122,7 +122,7 @@ git push -u origin main
 
 ### 4. 检查站点地址
 
-`site.config.js` 里的 `url` 已经是 `https://yztc.github.io/my_blog`，RSS 和 sitemap 用它生成绝对链接，**通常不需要额外配置**。
+`site.config.js` 里的 `url` 已经是 `https://yztcfzg.github.io/my_blog`，RSS 和 sitemap 用它生成绝对链接，**通常不需要额外配置**。
 
 只有换了域名或仓库名时才需要改这里；也可以在 **Settings → Secrets and variables → Actions → Variables** 新建 `SITE_URL` 来覆盖它。
 
@@ -132,12 +132,12 @@ git push -u origin main
 
 ```js
 export const site = {
-  title: 'yztc',                                  // 站名
-  author: 'yztc',                                 // 署名
+  title: 'yztcfzg',                                  // 站名
+  author: 'yztcfzg',                                 // 署名
   description: '一个写字的地方。',
-  url: 'https://yztc.github.io/my_blog',          // 完整访问地址
+  url: 'https://yztcfzg.github.io/my_blog',          // 完整访问地址
   repo: 'my_blog',                                // 仓库名
-  links: { github: 'https://github.com/yztc', email: '', rss: true },
+  links: { github: 'https://github.com/yztcfzg', email: '', rss: true },
 }
 ```
 

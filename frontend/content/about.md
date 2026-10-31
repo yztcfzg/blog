@@ -2,7 +2,7 @@
 title: 关于
 ---
 
-你好，我是 **yztc**。
+你好，我是 **yztcfzg**。
 
 白天写代码，晚上也写代码，偶尔写点别的。这里放一些不值得发朋友圈、但又不想丢掉的想法。
 
@@ -22,7 +22,7 @@ title: 关于
 
 ## 联系
 
-- GitHub：[@CUHKlyc](https://github.com/CUHKlyc)
+- GitHub：[@yztcfzg](https://github.com/yztcfzg)
 - 邮箱：留空，还没想好要不要公开
 
 > 这个页面也是 Markdown，文件在 `frontend/content/about.md`，随时可以改。
