@@ -367,6 +367,9 @@ body {
 }
 
 .statusbar__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
   font-family: var(--font-mono);
   white-space: nowrap;
 }

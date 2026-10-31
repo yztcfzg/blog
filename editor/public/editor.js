@@ -10,6 +10,7 @@ const els = {
   preview: $('preview'),
   status: $('status'),
   wordCount: $('wordCount'),
+  proxyInfo: $('proxyInfo'),
   saveState: $('saveState'),
   list: $('postList'),
   fileInput: $('fileInput'),
@@ -69,6 +70,21 @@ function setStatus(text, type = '') {
 
 function setSaveState(text) {
   els.saveState.textContent = text
+}
+
+async function refreshProxy(force = false) {
+  try {
+    const data = await api(`/api/proxy${force ? '?force=1' : ''}`)
+    if (data.port) {
+      els.proxyInfo.textContent = `代理 ${data.port}`
+      els.proxyInfo.title = `发布时经由 127.0.0.1:${data.port} 访问 GitHub`
+    } else {
+      els.proxyInfo.textContent = '直连'
+      els.proxyInfo.title = '没有检测到可用代理，发布时会尝试直连'
+    }
+  } catch {
+    els.proxyInfo.textContent = ''
+  }
 }
 
 // ---------- 文章列表 ----------
@@ -407,6 +423,7 @@ async function publish() {
       message: `post: ${title}`,
     })
     setStatus(data.message || '已发布', 'ok')
+    if (data.proxy) els.proxyInfo.textContent = `代理 ${data.proxy}`
   } catch (err) {
     setStatus(err.message, 'error')
   } finally {
@@ -520,6 +537,7 @@ async function init() {
     }
 
     bind()
+    refreshProxy()
   } catch (err) {
     document.body.innerHTML = `<p style="padding:40px;font-family:sans-serif">写作台启动失败：${escapeHtml(err.message)}</p>`
   }

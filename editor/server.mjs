@@ -8,6 +8,7 @@ import { promisify } from 'node:util'
 
 import { parseFrontmatter } from '../frontend/src/lib/frontmatter.js'
 import { site } from '../frontend/site.config.js'
+import { detectProxy, buildGitEnv } from './lib/proxy.mjs'
 
 const execFileAsync = promisify(execFile)
 
@@ -63,13 +64,36 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-async function git(args) {
-  const { stdout } = await execFileAsync('git', args, {
+async function git(args, { proxy = null } = {}) {
+  // 命令行 -c 优先级最高，能盖掉仓库里可能过期的 http.proxy；
+  // 没有可用代理时传空值，避免沿用旧端口
+  const prefix = proxy
+    ? ['-c', `http.proxy=http://127.0.0.1:${proxy}`]
+    : ['-c', 'http.proxy=']
+
+  const { stdout } = await execFileAsync('git', [...prefix, ...args], {
     cwd: ROOT,
     maxBuffer: 10 * 1024 * 1024,
     windowsHide: true,
+    env: buildGitEnv(proxy),
   })
   return stdout.trim()
+}
+
+/** 推送：先探测代理，失败就强制重探一次（应对 Clash 重启换端口） */
+async function pushWithProxy() {
+  let proxy = await detectProxy()
+
+  try {
+    await git(['push'], { proxy })
+  } catch (firstError) {
+    const retry = await detectProxy({ force: true })
+    if (!retry || retry === proxy) throw firstError
+    await git(['push'], { proxy: retry })
+    proxy = retry
+  }
+
+  return proxy
 }
 
 // ---------- 配置与文章 ----------
@@ -77,6 +101,14 @@ async function git(args) {
 app.get('/api/config', (req, res) => {
   res.json({ title: site.title, categories: site.categories || [] })
 })
+
+app.get(
+  '/api/proxy',
+  ah(async (req, res) => {
+    const port = await detectProxy({ force: req.query.force === '1' })
+    res.json({ port })
+  })
+)
 
 app.get(
   '/api/posts',
@@ -212,17 +244,22 @@ app.post(
 
     await git(['commit', '-m', message || `post: ${slug}`])
 
+    let proxy = null
     try {
-      await git(['push'])
+      proxy = await pushWithProxy()
     } catch (err) {
       const detail = String(err.stderr || err.message || '')
       throw bad(
-        '提交成功但推送失败，检查网络或代理后再点一次发布。\n' + detail.slice(0, 300),
+        '提交成功但推送失败，检查 Clash 是否开启后再点一次发布。\n' + detail.slice(0, 300),
         502
       )
     }
 
-    res.json({ ok: true, message: '已推送，1~2 分钟后上线' })
+    res.json({
+      ok: true,
+      message: `已推送${proxy ? `（代理 ${proxy}）` : ''}，1~2 分钟后上线`,
+      proxy,
+    })
   })
 )
 
