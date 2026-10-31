@@ -234,8 +234,9 @@ function renderList() {
 
 const draftKey = (slug) => `blog-editor:${slug}`
 
-function saveDraft() {
-  if (!state.slug || !state.dirty) return
+function saveDraft({ force = false } = {}) {
+  if (!state.slug) return
+  if (!force && !state.dirty) return
   try {
     localStorage.setItem(
       draftKey(state.slug),
@@ -526,11 +527,14 @@ async function publish() {
 
   if (!confirm(`发布《${title}》到线上？`)) return
 
+  // 发布前先强制存一份本地草稿，再写盘：任何一步失败，内容都还在
+  saveDraft({ force: true })
+
   const ok = await save({ silent: true })
   if (!ok) return
 
   els.publishBtn.disabled = true
-  setStatus('正在提交并推送…')
+  setStatus('已保存，正在提交并推送…')
 
   try {
     const data = await postJSON('/api/publish', {
