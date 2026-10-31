@@ -401,10 +401,137 @@ app.use((err, req, res, next) => {
   res.status(status).json({ error: err.message || '服务器错误' })
 })
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log('')
-  console.log(`  写作台已启动  →  http://127.0.0.1:${PORT}`)
-  console.log('')
-  console.log('  关掉这个窗口即停止。')
-  console.log('')
-})
+// ---------- 启动、端口自愈与退出 ----------
+
+const EDITOR_URL = `http://127.0.0.1:${PORT}`
+
+async function openBrowser(target) {
+  try {
+    await execFileAsync('cmd', ['/c', 'start', '', target], { windowsHide: true })
+  } catch {
+    /* 打不开浏览器不影响服务 */
+  }
+}
+
+/** 端口上跑的到底是不是写作台自己 */
+async function editorAlreadyRunning() {
+  try {
+    const res = await fetch(`${EDITOR_URL}/api/config`, {
+      signal: AbortSignal.timeout(1200),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+async function findPidOnPort(port) {
+  try {
+    const { stdout } = await execFileAsync('netstat', ['-ano'], { windowsHide: true })
+    for (const line of stdout.split(/\r?\n/)) {
+      if (!line.includes(`:${port}`) || !/LISTENING/i.test(line)) continue
+      const parts = line.trim().split(/\s+/)
+      const pid = Number(parts[parts.length - 1])
+      if (Number.isInteger(pid) && pid > 0) return pid
+    }
+  } catch {
+    /* netstat 不可用 */
+  }
+  return null
+}
+
+async function isNodeProcess(pid) {
+  try {
+    const { stdout } = await execFileAsync(
+      'tasklist',
+      ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'],
+      { windowsHide: true }
+    )
+    return /node\.exe/i.test(stdout)
+  } catch {
+    return false
+  }
+}
+
+function listenOnce() {
+  return new Promise((resolve, reject) => {
+    const server = app.listen(PORT, '127.0.0.1')
+    server.once('listening', () => resolve(server))
+    server.once('error', reject)
+  })
+}
+
+/** 收到退出信号时先关连接，再兜底强退，避免窗口关了进程还在 */
+function installShutdown(server) {
+  let closing = false
+
+  const shutdown = (signal) => {
+    if (closing) return
+    closing = true
+    console.log(`\n  收到 ${signal}，正在退出…`)
+    server.close(() => process.exit(0))
+    setTimeout(() => process.exit(0), 1500).unref()
+  }
+
+  for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGBREAK']) {
+    try {
+      process.on(signal, () => shutdown(signal))
+    } catch {
+      /* 当前平台不支持该信号 */
+    }
+  }
+}
+
+async function boot() {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const server = await listenOnce()
+      installShutdown(server)
+
+      console.log('')
+      console.log(`  写作台已启动  →  ${EDITOR_URL}`)
+      console.log('')
+      console.log('  关掉这个窗口即停止。')
+      console.log('')
+
+      if (!process.argv.includes('--no-open')) openBrowser(EDITOR_URL)
+      return
+    } catch (err) {
+      if (err.code !== 'EADDRINUSE') {
+        console.error(err)
+        process.exit(1)
+      }
+
+      // 已经有一个写作台在跑，直接打开它，不再起第二个
+      if (await editorAlreadyRunning()) {
+        console.log('')
+        console.log('  写作台已经在运行，直接为你打开浏览器。')
+        console.log(`  ${EDITOR_URL}`)
+        console.log('')
+        if (!process.argv.includes('--no-open')) openBrowser(EDITOR_URL)
+        process.exit(0)
+      }
+
+      const pid = await findPidOnPort(PORT)
+      if (!pid || !(await isNodeProcess(pid))) {
+        console.error('')
+        console.error(`  端口 ${PORT} 被其他程序占用（PID ${pid ?? '未知'}），请先关闭它。`)
+        console.error('')
+        process.exit(1)
+      }
+
+      console.log(`  端口 ${PORT} 被上次没退干净的进程占着（PID ${pid}），正在清理…`)
+      try {
+        await execFileAsync('taskkill', ['/F', '/PID', String(pid)], { windowsHide: true })
+      } catch {
+        /* 可能它刚好自己退了 */
+      }
+      await new Promise((resolve) => setTimeout(resolve, 400))
+    }
+  }
+
+  console.error(`  端口 ${PORT} 仍然被占用，请手动结束占用进程后重试。`)
+  process.exit(1)
+}
+
+boot()

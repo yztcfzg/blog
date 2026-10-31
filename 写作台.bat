@@ -8,5 +8,7 @@ if not exist node_modules (
   call npm install --no-audit --no-fund
 )
 
-start "" cmd /c "timeout /t 2 >nul & start http://127.0.0.1:4310"
 node server.mjs
+
+rem 服务退出后一并关闭窗口，不留后台进程
+exit
