@@ -232,18 +232,19 @@ function renderList() {
 
 // ---------- 草稿 ----------
 
-const draftKey = (slug) => `blog-editor:${slug}`
+// 还没有 slug 的新文章用 new 作为临时键，保存后再迁到正式键
+const draftKey = (slug) => `blog-editor:${slug || 'new'}`
 
 function saveDraft({ force = false } = {}) {
-  if (!state.slug) return
-  if (!force && !state.dirty) return
+  if (!force && !state.dirty) return false
   try {
     localStorage.setItem(
       draftKey(state.slug),
       JSON.stringify({ body: els.source.value, title: els.title.value })
     )
+    return true
   } catch {
-    /* 忽略配额错误 */
+    return false
   }
 }
 
@@ -258,7 +259,11 @@ function clearDraft(slug) {
 // ---------- 打开 / 新建 ----------
 
 async function openPost(slug, { skipConfirm = false } = {}) {
-  if (state.dirty && !skipConfirm && !confirm('当前修改还没保存，确定切换吗？')) return
+  if (state.dirty && !skipConfirm) {
+    if (!confirm('当前修改还没保存，确定切换吗？')) return
+    // 用户确认离开，先把未保存的内容留在草稿里
+    saveDraft({ force: true })
+  }
 
   const post = await api(`/api/posts/${encodeURIComponent(slug)}`)
   state.slug = post.slug
@@ -301,7 +306,10 @@ async function openPost(slug, { skipConfirm = false } = {}) {
 }
 
 function newPost() {
-  if (state.dirty && !confirm('当前修改还没保存，确定新建吗？')) return
+  if (state.dirty) {
+    if (!confirm('当前修改还没保存，确定新建吗？')) return
+    saveDraft({ force: true })
+  }
 
   state.slug = ''
   state.dirty = false
@@ -373,12 +381,15 @@ function updateCount() {
 
 function onInput() {
   state.dirty = true
-  setSaveState('未保存')
+  setSaveState('编辑中')
   updateCount()
   schedulePreview()
 
+  // 停下 300ms 就把草稿落盘，状态栏会提示「草稿已保存」
   clearTimeout(draftTimer)
-  draftTimer = setTimeout(saveDraft, 1000)
+  draftTimer = setTimeout(() => {
+    if (saveDraft() && state.dirty) setSaveState('草稿已保存')
+  }, 300)
 }
 
 // ---------- 编辑操作 ----------
@@ -507,6 +518,7 @@ async function save({ silent = false } = {}) {
     state.dirty = false
     location.hash = slug
     clearDraft(slug)
+    clearDraft('')
     setSaveState('')
     await refreshList()
     if (!silent) setStatus('已保存', 'ok')
@@ -653,8 +665,15 @@ function bind() {
 
   window.addEventListener('beforeunload', (event) => {
     if (!state.dirty) return
+    // 关页面前再兜一次，防止最后几个字没来得及写进草稿
+    saveDraft({ force: true })
     event.preventDefault()
     event.returnValue = ''
+  })
+
+  // 切到别的标签页 / 最小化时也立刻存一份
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveDraft({ force: true })
   })
 }
 
