@@ -11,6 +11,11 @@ const els = {
   status: $('status'),
   wordCount: $('wordCount'),
   proxyInfo: $('proxyInfo'),
+  categoryBtn: $('categoryBtn'),
+  categoryDialog: $('categoryDialog'),
+  categoryRows: $('categoryRows'),
+  newCategoryInput: $('newCategoryInput'),
+  addCategoryBtn: $('addCategoryBtn'),
   saveState: $('saveState'),
   list: $('postList'),
   fileInput: $('fileInput'),
@@ -84,6 +89,114 @@ async function refreshProxy(force = false) {
     }
   } catch {
     els.proxyInfo.textContent = ''
+  }
+}
+
+// ---------- 分类 ----------
+
+async function refreshCategories() {
+  const data = await api('/api/categories')
+  state.categories = (data.categories || []).map((item) => item.name)
+
+  const current = els.category.value
+  els.category.innerHTML = [
+    '<option value="">未分类</option>',
+    ...state.categories.map(
+      (name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
+    ),
+  ].join('')
+
+  els.category.value = state.categories.includes(current) ? current : state.categories[0] || ''
+}
+
+async function renderCategoryRows() {
+  const data = await api('/api/categories')
+  const categories = data.categories || []
+
+  if (!categories.length) {
+    els.categoryRows.innerHTML = '<p class="sidebar__empty">还没有分类</p>'
+    return
+  }
+
+  els.categoryRows.innerHTML = categories
+    .map(
+      (item) => `
+      <div class="cat-row" data-name="${escapeHtml(item.name)}">
+        <input class="cat-row__input" value="${escapeHtml(item.name)}" maxlength="16" />
+        <span class="cat-row__count">${item.count} 篇</span>
+        <button class="cat-row__del" data-name="${escapeHtml(item.name)}">删除</button>
+      </div>`
+    )
+    .join('')
+}
+
+async function openCategoryDialog() {
+  await renderCategoryRows()
+  els.categoryDialog.showModal()
+  els.newCategoryInput.focus()
+}
+
+async function addCategory() {
+  const name = els.newCategoryInput.value.trim()
+  if (!name) return
+
+  try {
+    await api('/api/categories', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name }),
+    })
+    els.newCategoryInput.value = ''
+    await renderCategoryRows()
+    await refreshCategories()
+    setStatus(`已添加分类「${name}」`, 'ok')
+  } catch (err) {
+    setStatus(err.message, 'error')
+  }
+}
+
+async function renameCategory(row, input) {
+  const oldName = row.dataset.name
+  const newName = input.value.trim()
+
+  if (!newName || newName === oldName) {
+    input.value = oldName
+    return
+  }
+
+  // 当前文章正用着这个分类时，改名后要跟着切过去
+  const wasCurrent = els.category.value === oldName
+
+  try {
+    await api(`/api/categories/${encodeURIComponent(oldName)}`, {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: newName }),
+    })
+
+    await renderCategoryRows()
+    await refreshCategories()
+    if (wasCurrent) els.category.value = newName
+    await refreshList()
+
+    setStatus(`「${oldName}」已改名为「${newName}」`, 'ok')
+  } catch (err) {
+    setStatus(err.message, 'error')
+    input.value = oldName
+  }
+}
+
+async function deleteCategory(name) {
+  if (!confirm(`删除分类「${name}」？\n\n该分类下的文章会保留，但变成未分类。`)) return
+
+  try {
+    const data = await api(`/api/categories/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    await renderCategoryRows()
+    await refreshCategories()
+    await refreshList()
+    setStatus(`已删除分类「${name}」，${data.cleared} 篇文章变为未分类`, 'ok')
+  } catch (err) {
+    setStatus(err.message, 'error')
   }
 }
 
@@ -200,7 +313,8 @@ function newPost() {
   els.slug.value = uniqueSlug(`post-${todayISO().replace(/-/g, '')}`)
   slugAutoValue = els.slug.value
 
-  history.replaceState(null, '', location.pathname)
+  // 清掉 hash 但保留查询参数（?categories 之类的入口参数）
+  history.replaceState(null, '', location.pathname + location.search)
   setSaveState('')
   setStatus('')
   renderList()
@@ -453,6 +567,32 @@ function bind() {
   els.saveBtn.addEventListener('click', () => save())
   els.publishBtn.addEventListener('click', publish)
 
+  els.categoryBtn.addEventListener('click', openCategoryDialog)
+  els.addCategoryBtn.addEventListener('click', addCategory)
+  els.newCategoryInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      addCategory()
+    }
+  })
+
+  els.categoryRows.addEventListener('change', (event) => {
+    const input = event.target.closest('.cat-row__input')
+    if (input) renameCategory(input.closest('.cat-row'), input)
+  })
+
+  els.categoryRows.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && event.target.classList?.contains('cat-row__input')) {
+      event.preventDefault()
+      event.target.blur()
+    }
+  })
+
+  els.categoryRows.addEventListener('click', (event) => {
+    const btn = event.target.closest('.cat-row__del')
+    if (btn) deleteCategory(btn.dataset.name)
+  })
+
   document.querySelector('.toolbar').addEventListener('click', (event) => {
     const btn = event.target.closest('button[data-cmd]')
     if (btn) runCommand(btn.dataset.cmd)
@@ -520,13 +660,7 @@ async function init() {
     const config = await api('/api/config')
     document.title = `${config.title} · 写作台`
     els.siteTitle.textContent = config.title
-    state.categories = config.categories || []
-
-    els.category.innerHTML = [
-      '<option value="">未分类</option>',
-      ...state.categories.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`),
-    ].join('')
-
+    await refreshCategories()
     await refreshList()
 
     const slug = decodeURIComponent(location.hash.slice(1))
@@ -538,6 +672,10 @@ async function init() {
 
     bind()
     refreshProxy()
+
+    if (new URLSearchParams(location.search).has('categories')) {
+      openCategoryDialog()
+    }
   } catch (err) {
     document.body.innerHTML = `<p style="padding:40px;font-family:sans-serif">写作台启动失败：${escapeHtml(err.message)}</p>`
   }

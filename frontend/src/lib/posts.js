@@ -20,6 +20,8 @@ function stripMarkdown(body) {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^[ \t]*[-*+][ \t]+/gm, '')
+    .replace(/^[ \t]*\d+\.[ \t]+/gm, '')
     .replace(/[*_`>~]/g, '')
     .replace(/\|/g, ' ')
     .replace(/\s+/g, ' ')

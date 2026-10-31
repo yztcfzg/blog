@@ -9,7 +9,7 @@
 
       <p v-if="post.summary" class="post-row__summary">{{ post.summary }}</p>
 
-      <p v-if="post.category" class="post-row__category">
+      <p v-if="post.category && showCategory" class="post-row__category">
         <router-link
           :to="`/category/${encodeURIComponent(post.category)}`"
           class="category"
@@ -26,6 +26,7 @@ import { computed } from 'vue'
 
 const props = defineProps({
   post: { type: Object, required: true },
+  showCategory: { type: Boolean, default: true },
 })
 
 const isoDate = computed(() => props.post.date.toISOString().slice(0, 10))

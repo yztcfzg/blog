@@ -12,7 +12,10 @@
       <aside class="sidebar">
         <div class="sidebar__head">
           <span class="sidebar__title" id="siteTitle">写作台</span>
-          <button class="icon-btn" id="newBtn" title="新建文章">＋</button>
+          <div class="sidebar__actions">
+            <button class="icon-btn icon-btn--text" id="categoryBtn" title="管理分类">分类</button>
+            <button class="icon-btn" id="newBtn" title="新建文章">＋</button>
+          </div>
         </div>
         <div class="sidebar__list" id="postList"></div>
       </aside>
@@ -90,6 +93,19 @@
     </div>
 
     <input type="file" id="fileInput" accept="image/*" multiple hidden />
+
+    <dialog class="dialog" id="categoryDialog">
+      <form method="dialog" class="dialog__head">
+        <h2 class="dialog__title">分类管理</h2>
+        <button class="icon-btn" value="close" aria-label="关闭">×</button>
+      </form>
+      <div class="dialog__body" id="categoryRows"></div>
+      <div class="dialog__foot">
+        <input id="newCategoryInput" placeholder="新分类名称" maxlength="16" />
+        <button class="btn btn--primary" id="addCategoryBtn" type="button">添加</button>
+      </div>
+    </dialog>
+
     <script type="module" src="/editor.js"></script>
   </body>
 </html>

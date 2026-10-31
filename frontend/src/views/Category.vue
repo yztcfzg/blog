@@ -6,7 +6,7 @@
     </header>
 
     <div v-if="posts.length" class="post-list">
-      <PostRow v-for="post in posts" :key="post.slug" :post="post" />
+      <PostRow v-for="post in posts" :key="post.slug" :post="post" :show-category="false" />
     </div>
 
     <p v-else class="empty">这个分类下还没有文章。</p>

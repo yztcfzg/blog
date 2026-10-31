@@ -17,6 +17,7 @@ const ROOT = path.resolve(here, '..')
 const FRONTEND = path.join(ROOT, 'frontend')
 const POSTS_DIR = path.join(FRONTEND, 'content', 'posts')
 const IMAGES_DIR = path.join(FRONTEND, 'public', 'images')
+const CONFIG_FILE = path.join(FRONTEND, 'site.config.js')
 const PORT = Number(process.env.PORT || 4310)
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,80}$/
@@ -107,6 +108,135 @@ app.get(
   ah(async (req, res) => {
     const port = await detectProxy({ force: req.query.force === '1' })
     res.json({ port })
+  })
+)
+
+// ---------- 分类管理 ----------
+
+function validateCategoryName(value) {
+  const name = String(value ?? '').trim()
+  if (!name) throw bad('分类名不能为空')
+  if (name.length > 16) throw bad('分类名最多 16 个字')
+  if (/['"[\]{}\r\n\t]/.test(name)) throw bad('分类名不能包含引号、括号或换行')
+  return name
+}
+
+async function readCategories() {
+  const text = await fs.readFile(CONFIG_FILE, 'utf8')
+  const block = /categories:\s*\[([\s\S]*?)\]/.exec(text)
+  if (!block) return []
+  return [...block[1].matchAll(/['"]([^'"]*)['"]/g)]
+    .map((match) => match[1].trim())
+    .filter(Boolean)
+}
+
+async function writeCategories(list) {
+  const text = await fs.readFile(CONFIG_FILE, 'utf8')
+  const pattern = /^([ \t]*)categories:\s*\[[\s\S]*?\][,]?$/m
+
+  if (!pattern.test(text)) {
+    throw bad('site.config.js 里的 categories 格式异常，请手动检查')
+  }
+
+  const serialized = `[${list.map((name) => `'${name}'`).join(', ')}]`
+  const next = text.replace(pattern, (_, indent) => `${indent}categories: ${serialized},`)
+
+  if (next === text) throw bad('没能写入分类配置')
+  await fs.writeFile(CONFIG_FILE, next, 'utf8')
+}
+
+async function listPostFiles() {
+  return (await fs.readdir(POSTS_DIR)).filter((file) => file.endsWith('.md'))
+}
+
+async function categoryCounts() {
+  const counts = new Map()
+  for (const file of await listPostFiles()) {
+    const raw = await fs.readFile(path.join(POSTS_DIR, file), 'utf8')
+    const { data } = parseFrontmatter(raw)
+    const name = String(data.category || '').trim()
+    if (name) counts.set(name, (counts.get(name) || 0) + 1)
+  }
+  return counts
+}
+
+/** 分类改名或删除时，同步迁移文章里的 category 字段 */
+async function migratePosts(oldName, newName) {
+  let changed = 0
+
+  for (const file of await listPostFiles()) {
+    const full = path.join(POSTS_DIR, file)
+    const raw = await fs.readFile(full, 'utf8')
+    const current = /^category:[ \t]*(.*)$/m.exec(raw)
+    if (!current) continue
+
+    const value = current[1].trim().replace(/^['"]|['"]$/g, '')
+    if (value !== oldName) continue
+
+    const next = newName
+      ? raw.replace(/^category:.*$/m, `category: ${newName}`)
+      : raw.replace(/^category:.*\r?\n/m, '')
+
+    await fs.writeFile(full, next, 'utf8')
+    changed += 1
+  }
+
+  return changed
+}
+
+app.get(
+  '/api/categories',
+  ah(async (req, res) => {
+    const names = await readCategories()
+    const counts = await categoryCounts()
+    res.json({
+      categories: names.map((name) => ({ name, count: counts.get(name) || 0 })),
+    })
+  })
+)
+
+app.post(
+  '/api/categories',
+  ah(async (req, res) => {
+    const name = validateCategoryName(req.body?.name)
+    const list = await readCategories()
+    if (list.includes(name)) throw bad('这个分类已经存在')
+    list.push(name)
+    await writeCategories(list)
+    res.json({ ok: true, categories: list })
+  })
+)
+
+app.put(
+  '/api/categories/:name',
+  ah(async (req, res) => {
+    const oldName = String(req.params.name || '')
+    const newName = validateCategoryName(req.body?.name)
+    const list = await readCategories()
+
+    const index = list.indexOf(oldName)
+    if (index === -1) throw bad('分类不存在', 404)
+    if (newName !== oldName && list.includes(newName)) throw bad('新名称已经存在')
+
+    list[index] = newName
+    await writeCategories(list)
+    const moved = await migratePosts(oldName, newName)
+
+    res.json({ ok: true, moved, categories: list })
+  })
+)
+
+app.delete(
+  '/api/categories/:name',
+  ah(async (req, res) => {
+    const name = String(req.params.name || '')
+    const list = await readCategories()
+    if (!list.includes(name)) throw bad('分类不存在', 404)
+
+    await writeCategories(list.filter((item) => item !== name))
+    const cleared = await migratePosts(name, null)
+
+    res.json({ ok: true, cleared, categories: list.filter((item) => item !== name) })
   })
 )
 
