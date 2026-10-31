@@ -1,7 +1,7 @@
 /**
  * 构建后生成 RSS 订阅源和 sitemap。
  * 用法：npm run build（已串联在 build 脚本里）
- * 也可单独执行：SITE_URL=https://example.com BASE_PATH=/my_blog/ node scripts/generate-feed.mjs
+ * 也可单独执行：SITE_URL=https://example.com BASE_PATH=/blog/ node scripts/generate-feed.mjs
  */
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
@@ -15,7 +15,7 @@ const postsDir = join(root, 'content', 'posts')
 const distDir = join(root, 'dist')
 
 // SITE_URL 表示站点的完整根地址（含 GitHub Pages 子路径），例如
-// https://yourname.github.io/my_blog
+// https://yourname.github.io/blog
 const siteUrl = (process.env.SITE_URL || site.url).replace(/\/$/, '')
 const homeUrl = `${siteUrl}/`
 const postUrl = (slug) => `${homeUrl}#/post/${slug}`

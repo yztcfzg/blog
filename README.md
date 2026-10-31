@@ -99,7 +99,7 @@ git init
 git add .
 git commit -m "init blog"
 git branch -M main
-git remote add origin https://github.com/<你的用户名>/my_blog.git
+git remote add origin https://github.com/<你的用户名>/blog.git
 git push -u origin main
 ```
 
@@ -115,14 +115,14 @@ git push -u origin main
 
 地址是：
 
-- 项目页：`https://<用户名>.github.io/my_blog/`
+- 项目页：`https://<用户名>.github.io/blog/`
 - 用户主页（仓库名 `<用户名>.github.io`）：`https://<用户名>.github.io/`
 
 资源前缀会从 GitHub Actions 的环境里自动推断，换仓库名也不用改代码。
 
 ### 4. 检查站点地址
 
-`site.config.js` 里的 `url` 已经是 `https://yztcfzg.github.io/my_blog`，RSS 和 sitemap 用它生成绝对链接，**通常不需要额外配置**。
+`site.config.js` 里的 `url` 已经是 `https://yztcfzg.github.io/blog`，RSS 和 sitemap 用它生成绝对链接，**通常不需要额外配置**。
 
 只有换了域名或仓库名时才需要改这里；也可以在 **Settings → Secrets and variables → Actions → Variables** 新建 `SITE_URL` 来覆盖它。
 
@@ -135,8 +135,8 @@ export const site = {
   title: 'yztcfzg',                                  // 站名
   author: 'yztcfzg',                                 // 署名
   description: '一个写字的地方。',
-  url: 'https://yztcfzg.github.io/my_blog',          // 完整访问地址
-  repo: 'my_blog',                                // 仓库名
+  url: 'https://yztcfzg.github.io/blog',          // 完整访问地址
+  repo: 'blog',                                // 仓库名
   links: { github: 'https://github.com/yztcfzg', email: '', rss: true },
 }
 ```
