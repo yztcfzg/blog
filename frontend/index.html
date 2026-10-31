@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="%BASE_URL%favicon.ico" />
+
+    <title>yztc</title>
+    <meta name="description" content="一个写字的地方。" />
+    <meta name="author" content="yztc" />
+    <meta name="theme-color" content="#fcfcfa" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="yztc" />
+    <meta property="og:description" content="一个写字的地方。" />
+
+    <script>
+      // 在样式加载前定好主题，防止深色模式下闪白
+      ;(function () {
+        try {
+          var saved = localStorage.getItem('blog-theme')
+          var dark =
+            saved === 'dark' ||
+            (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)
+          if (dark) document.documentElement.setAttribute('data-theme', 'dark')
+        } catch (e) {}
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
