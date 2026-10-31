@@ -53,6 +53,7 @@ function loadPosts() {
         slug,
         title: data.title || slug,
         date: parseDate(data.date),
+        updated: data.updated ? parseDate(data.updated) : null,
         category: data.category ? String(data.category).trim() : '',
         summary: data.summary || plain.slice(0, 120),
         draft: String(data.draft) === 'true',
@@ -112,7 +113,7 @@ ${posts
   .map(
     (post) => `  <url>
     <loc>${escapeXml(postUrl(post.slug))}</loc>
-    <lastmod>${post.date.toISOString().slice(0, 10)}</lastmod>
+    <lastmod>${(post.updated || post.date).toISOString().slice(0, 10)}</lastmod>
   </url>`
   )
   .join('\n')}

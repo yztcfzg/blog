@@ -321,6 +321,11 @@ async function openPost(slug, { skipConfirm = false } = {}) {
 
   els.title.value = source?.title || ''
   els.date.value = source?.date || todayISO()
+  // 已发布的文章锁定发布日期，避免旧文章因为改动跳到列表最前面
+  els.date.disabled = Boolean(data.published)
+  els.date.title = data.published
+    ? '发布日期在首次发布后固定，之后的修改只会更新「更新于」'
+    : ''
   els.category.value = source?.category || ''
   els.slug.value = data.slug
   els.summary.value = source?.summary || ''
@@ -348,6 +353,8 @@ async function newPost() {
 
   els.title.value = ''
   els.date.value = todayISO()
+  els.date.disabled = false
+  els.date.title = ''
   els.category.value = state.categories[0] || ''
   els.summary.value = ''
   els.source.value = ''

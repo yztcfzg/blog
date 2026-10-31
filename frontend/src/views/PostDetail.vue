@@ -11,6 +11,10 @@
 
           <div class="article__meta">
             <time :datetime="isoDate">{{ post.dateText }}</time>
+            <template v-if="post.updatedText && post.updatedText !== post.dateText">
+              <span class="article__meta-dot" />
+              <span>更新于 {{ post.updatedText }}</span>
+            </template>
             <span class="article__meta-dot" />
             <span>{{ post.readingTime }} 分钟阅读</span>
             <template v-if="post.category">

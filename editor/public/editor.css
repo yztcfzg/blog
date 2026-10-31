@@ -445,6 +445,13 @@ body {
   border-color: var(--line-strong);
 }
 
+.field input:disabled {
+  color: var(--text-3);
+  background: var(--code-bg);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+
 .field--date input {
   width: 128px;
 }

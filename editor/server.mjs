@@ -259,6 +259,7 @@ async function readMarkdown(file) {
     return {
       title: data.title || '',
       date: data.date || '',
+      updated: data.updated || '',
       category: data.category || '',
       summary: data.summary || '',
       body,
@@ -269,8 +270,9 @@ async function readMarkdown(file) {
   }
 }
 
-function buildMarkdown({ title, date, category, summary, body, draft }) {
+function buildMarkdown({ title, date, updated, category, summary, body, draft }) {
   const lines = ['---', `title: ${yamlValue(title)}`, `date: ${date || today()}`]
+  if (updated) lines.push(`updated: ${updated}`)
   if (category) lines.push(`category: ${yamlValue(category)}`)
   if (summary) lines.push(`summary: ${yamlValue(summary)}`)
   if (draft) lines.push('draft: true')
@@ -285,6 +287,7 @@ function toPublic(slug, entry) {
     slug,
     title: entry.title,
     date: entry.date,
+    updated: entry.updated,
     category: entry.category,
     summary: entry.summary,
     body: entry.body,
@@ -353,7 +356,6 @@ app.post(
   ah(async (req, res) => {
     const slug = req.params.slug
     const { title, date, category, summary, body } = req.body || {}
-    if (!String(title || '').trim()) throw bad('标题不能为空')
 
     await fs.writeFile(
       draftPath(slug),
@@ -498,12 +500,38 @@ app.post(
     const draft = await readMarkdown(draftFile)
     const published = await readMarkdown(postFile)
     if (!draft && !published) throw bad('请先保存文章')
+    if (!draft) throw bad('没有需要发布的改动')
 
-    // 有草稿才提升为正式文章；没有草稿说明正式文件就是最后发布的样子
-    const promoted = Boolean(draft)
-    if (draft) {
-      await fs.writeFile(postFile, draft.raw, 'utf8')
+    const changed =
+      !published ||
+      draft.title !== published.title ||
+      draft.body !== published.body ||
+      draft.category !== published.category ||
+      draft.summary !== published.summary
+
+    if (!changed) {
+      await fs.rm(draftFile, { force: true })
+      return res.json({ ok: true, skipped: true, message: '内容和线上一致，无需发布' })
     }
+
+    const promoted = true
+    // 发布日期锁定在第一次发布那天，之后的编辑只更新 updated，
+    // 老文章不会因为改动而跳到列表最前面
+    const finalDate = published?.date || draft.date || today()
+    const finalUpdated = published ? today() : ''
+
+    await fs.writeFile(
+      postFile,
+      buildMarkdown({
+        title: draft.title,
+        date: finalDate,
+        updated: finalUpdated,
+        category: draft.category,
+        summary: draft.summary,
+        body: draft.body,
+      }),
+      'utf8'
+    )
 
     const relative = path.relative(ROOT, postFile).split(path.sep).join('/')
     await git(['add', '--', relative, 'frontend/public/images'])

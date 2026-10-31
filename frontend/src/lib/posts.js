@@ -46,6 +46,9 @@ function buildPost(path, raw) {
     title: data.title || slug,
     date: parseDate(data.date),
     dateText: formatDate(data.date),
+    // 修改时间单独记录，排序始终用首次发布日期
+    updated: data.updated ? parseDate(data.updated) : null,
+    updatedText: data.updated ? formatDate(data.updated) : '',
     category: data.category ? String(data.category).trim() : '',
     summary,
     body,
