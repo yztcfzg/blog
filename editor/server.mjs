@@ -100,7 +100,7 @@ async function pushWithProxy() {
 // ---------- 配置与文章 ----------
 
 app.get('/api/config', (req, res) => {
-  res.json({ title: site.title, categories: site.categories || [] })
+  res.json({ title: site.title, url: site.url, categories: site.categories || [] })
 })
 
 app.get(

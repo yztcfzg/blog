@@ -16,6 +16,7 @@ const els = {
   categoryRows: $('categoryRows'),
   newCategoryInput: $('newCategoryInput'),
   addCategoryBtn: $('addCategoryBtn'),
+  openSiteBtn: $('openSiteBtn'),
   saveState: $('saveState'),
   list: $('postList'),
   fileInput: $('fileInput'),
@@ -660,6 +661,11 @@ async function init() {
     const config = await api('/api/config')
     document.title = `${config.title} · 写作台`
     els.siteTitle.textContent = config.title
+
+    if (config.url) {
+      els.openSiteBtn.href = config.url
+      els.openSiteBtn.title = config.url
+    }
     await refreshCategories()
     await refreshList()
 
