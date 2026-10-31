@@ -56,24 +56,36 @@ export function parseFrontmatter(raw) {
   return { data, body: src.slice(match[0].length) }
 }
 
+/**
+ * 去掉引号。写作台写入时会用 JSON.stringify 转义含特殊字符的值，
+ * 所以双引号包裹的值要先按 JSON 规则还原（\\" → "、\\n → 换行），
+ * 手写的双引号值若不符合 JSON 规则，退回到简单的去引号。
+ */
 function unquote(value) {
   const text = value.trim()
-  if (
-    (text.startsWith('"') && text.endsWith('"')) ||
-    (text.startsWith("'") && text.endsWith("'"))
-  ) {
+
+  if (text.startsWith('"') && text.endsWith('"') && text.length >= 2) {
+    try {
+      return JSON.parse(text)
+    } catch {
+      return text.slice(1, -1)
+    }
+  }
+
+  if (text.startsWith("'") && text.endsWith("'") && text.length >= 2) {
     return text.slice(1, -1)
   }
+
   return text
 }
+
+const DATE_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?/
 
 /** 解析 YYYY-MM-DD 或 YYYY-MM-DD HH:mm，按本地时区处理，避免 UTC 偏移导致日期差一天 */
 export function parseDate(value) {
   if (value instanceof Date) return value
 
-  const match = /^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{1,2}))?/.exec(
-    String(value || '').trim()
-  )
+  const match = DATE_RE.exec(String(value || '').trim())
   if (!match) return new Date(0)
 
   const [, y, m, d, hh = '0', mm = '0'] = match
@@ -81,6 +93,9 @@ export function parseDate(value) {
 }
 
 export function formatDate(date) {
+  // 没有写日期时返回空串，而不是 1970-01-01
+  if (!(date instanceof Date) && !DATE_RE.test(String(date ?? '').trim())) return ''
+
   const d = parseDate(date)
   if (Number.isNaN(d.getTime())) return ''
   const pad = (n) => String(n).padStart(2, '0')

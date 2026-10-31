@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/generate-feed.mjs",
+    "build": "vite build && node scripts/prerender.mjs && node scripts/generate-feed.mjs",
     "preview": "vite preview",
     "new": "node scripts/new-post.mjs",
     "lint": "eslint . --fix",

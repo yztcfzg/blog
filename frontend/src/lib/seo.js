@@ -28,8 +28,14 @@ export function absolute(path) {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`
 }
 
+/** 统一成带结尾斜杠的地址，和预渲染出来的目录结构（/post/xxx/index.html）一致 */
+function pageUrl(path) {
+  const clean = path === '/' ? '/' : `/${path.replace(/^\/|\/$/g, '')}/`
+  return `${base}${clean}`
+}
+
 export function setCanonical(path) {
-  upsertLink('canonical', `${base}/#${path}`)
+  upsertLink('canonical', pageUrl(path))
 }
 
 export function setPageMeta({ title, description, image, type = 'website' } = {}) {
@@ -58,15 +64,18 @@ export function setPageMeta({ title, description, image, type = 'website' } = {}
 
 /** 文章页的结构化数据，方便搜索引擎理解作者与时间 */
 export function setArticleJsonLd(post) {
-  const url = `${base}/#/post/${post.slug}`
+  const url = pageUrl(`/post/${post.slug}`)
+  // 没写日期的文章不输出 1970 年，宁可省略字段
+  const published = post.date?.getTime() ? post.date.toISOString() : undefined
+  const modified = post.updated?.getTime() ? post.updated.toISOString() : published
 
   setJsonLd({
     '@context': 'https://schema.org',
     '@type': 'BlogPosting',
     headline: post.title,
     description: post.summary || site.description,
-    datePublished: post.date.toISOString(),
-    dateModified: (post.updated || post.date).toISOString(),
+    ...(published ? { datePublished: published } : {}),
+    ...(modified ? { dateModified: modified } : {}),
     author: { '@type': 'Person', name: site.author },
     mainEntityOfPage: url,
     ...(post.cover ? { image: absolute(post.cover) } : {}),

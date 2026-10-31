@@ -21,6 +21,7 @@ const els = {
   docState: $('docState'),
   historyBtn: $('historyBtn'),
   discardBtn: $('discardBtn'),
+  deleteBtn: $('deleteBtn'),
   historyDialog: $('historyDialog'),
   historyList: $('historyList'),
   list: $('postList'),
@@ -107,14 +108,41 @@ async function refreshCategories() {
   state.categories = (data.categories || []).map((item) => item.name)
 
   const current = els.category.value
+  // 文章上的分类可能已经不在站点配置里（改过配置、手动改过 md），
+  // 先留成临时选项，否则下拉框会退回「未分类」，下次保存就把分类清掉了
+  const extra = current && !state.categories.includes(current) ? [current] : []
+
   els.category.innerHTML = [
     '<option value="">未分类</option>',
-    ...state.categories.map(
+    ...[...extra, ...state.categories].map(
       (name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`
     ),
   ].join('')
 
-  els.category.value = state.categories.includes(current) ? current : state.categories[0] || ''
+  els.category.value = current
+}
+
+/** 设置分类；配置里没有的分类临时补进下拉框，避免静默丢失 */
+function setCategory(value) {
+  const name = String(value || '')
+
+  if (name && ![...els.category.options].some((option) => option.value === name)) {
+    const option = document.createElement('option')
+    option.value = name
+    option.textContent = name
+    els.category.appendChild(option)
+  }
+
+  els.category.value = name
+}
+
+/** 新建文章时清掉为历史文章临时补上的分类选项 */
+function pruneCategoryOptions() {
+  for (const option of [...els.category.options]) {
+    if (option.value && !state.categories.includes(option.value) && option.value !== els.category.value) {
+      option.remove()
+    }
+  }
 }
 
 async function renderCategoryRows() {
@@ -266,6 +294,8 @@ function updateDocState() {
   }
 
   els.discardBtn.hidden = !(state.hasDraft && state.published)
+  // 只有线上存在的文章、或已有草稿的文章才谈得上删除
+  els.deleteBtn.hidden = !(state.published || state.hasDraft)
 }
 
 /**
@@ -293,7 +323,29 @@ async function persistDraft({ quiet = false, refresh = null } = {}) {
     setSaveState('')
     updateDocState()
 
+    // 侧栏数据跟着更新，否则连着新建两篇没写标题的文章会算出同一个网址，
+    // 第二篇的自动保存会把第一篇的草稿覆盖掉
+    const payload = currentPayload()
+    const known = state.posts.find((item) => item.slug === slug)
+
+    if (known) {
+      known.title = payload.title || known.title
+      known.date = payload.date
+      known.category = payload.category
+      known.hasDraft = true
+    } else {
+      state.posts.unshift({
+        slug,
+        title: payload.title || slug,
+        date: payload.date,
+        category: payload.category,
+        published: false,
+        hasDraft: true,
+      })
+    }
+
     if (refresh ?? !quiet) await refreshList()
+    else renderList()
     if (!quiet) setStatus('草稿已保存', 'ok')
     return true
   } catch (err) {
@@ -326,7 +378,7 @@ async function openPost(slug, { skipConfirm = false } = {}) {
   els.date.title = data.published
     ? '发布日期在首次发布后固定，之后的修改只会更新「更新于」'
     : ''
-  els.category.value = source?.category || ''
+  setCategory(source?.category || '')
   els.slug.value = data.slug
   els.summary.value = source?.summary || ''
   els.source.value = source?.body || ''
@@ -356,6 +408,7 @@ async function newPost() {
   els.date.disabled = false
   els.date.title = ''
   els.category.value = state.categories[0] || ''
+  pruneCategoryOptions()
   els.summary.value = ''
   els.source.value = ''
   els.slug.value = uniqueSlug(`post-${todayISO().replace(/-/g, '')}`)
@@ -565,6 +618,9 @@ async function publish() {
     state.hasDraft = false
     state.published = true
     state.dirty = false
+    // 首次发布后发布日期就固定了，输入框跟着锁上，别让人以为还能改
+    els.date.disabled = true
+    els.date.title = '发布日期在首次发布后固定，之后的修改只会更新「更新于」'
     updateDocState()
     await refreshList()
 
@@ -594,6 +650,34 @@ async function discardDraft() {
     setStatus('已回到线上版本', 'ok')
   } catch (err) {
     setStatus(err.message, 'error')
+  }
+}
+
+/** 删除文章：线上内容会一起提交推送，所以提示要比「放弃草稿」重 */
+async function deletePost() {
+  if (!state.slug) return
+
+  const label = els.title.value.trim() || state.slug
+  const warning = state.published
+    ? `删除《${label}》？\n\n会立即提交并推送，线上 1~2 分钟后消失。\n本地文章文件和草稿都会被删掉。`
+    : `删除这篇草稿《${label}》？\n\n只删本地草稿，线上没有这篇文章。`
+  if (!confirm(warning)) return
+
+  const slug = state.slug
+  els.deleteBtn.disabled = true
+
+  try {
+    const data = await api(`/api/posts/${encodeURIComponent(slug)}`, { method: 'DELETE' })
+    const message = data.message || '已删除'
+    state.dirty = false
+    await refreshList()
+    await newPost()
+    // newPost() 会清空状态栏，删完再把结果提示补回来
+    setStatus(message, 'ok')
+  } catch (err) {
+    setStatus(err.message, 'error')
+  } finally {
+    els.deleteBtn.disabled = false
   }
 }
 
@@ -647,7 +731,7 @@ async function loadHistoryVersion(hash) {
 
     els.title.value = version.title || els.title.value
     els.date.value = version.date || els.date.value
-    els.category.value = version.category || els.category.value
+    setCategory(version.category || els.category.value)
     els.summary.value = version.summary || ''
     els.source.value = version.body || ''
 
@@ -670,7 +754,9 @@ function bind() {
     state.dirty = true
     setSaveState('未保存')
     if (!state.slug && (els.slug.value === slugAutoValue || !els.slug.value)) {
-      slugAutoValue = suggestSlug(els.title.value)
+      // 标题为空时 suggestSlug 会退回日期型网址，也要走一遍查重，
+      // 否则同一天新建的第二篇文章会撞上第一篇的网址
+      slugAutoValue = uniqueSlug(suggestSlug(els.title.value.trim()))
       els.slug.value = slugAutoValue
     }
   })
@@ -793,6 +879,7 @@ function bind() {
   els.historyBtn.addEventListener('click', openHistory)
 
   els.discardBtn.addEventListener('click', discardDraft)
+  els.deleteBtn.addEventListener('click', deletePost)
 
   els.historyList.addEventListener('click', (event) => {
     const row = event.target.closest('.history-row')

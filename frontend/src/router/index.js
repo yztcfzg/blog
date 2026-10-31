@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import { site } from '../../site.config'
 import { setCanonical, setJsonLd, setPageMeta } from '../lib/seo'
 import Home from '../views/Home.vue'
@@ -32,10 +32,11 @@ const routes = [
   },
 ]
 
-// GitHub Pages 是纯静态托管，hash 模式可以避免刷新/直达链接 404。
-// 想换成 history 模式，见 README 的「进阶」一节。
+// 构建时每篇文章都会预渲染成独立的 HTML（scripts/prerender.mjs），
+// 所以用 history 模式：地址是 /post/xxx/ 这种真实路径，爬虫能分别收录。
+// GitHub Pages 上靠 dist/404.html 兜底未知路径，旧的书签与 hash 链接在 main.js 里重定向。
 const router = createRouter({
-  history: createWebHashHistory(),
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes,
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) return savedPosition

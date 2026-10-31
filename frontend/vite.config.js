@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
 import { site } from './site.config.js'
+import { postsPlugin } from './vite-plugin-posts.js'
 
 /**
  * 推断 GitHub Pages 的资源前缀：
@@ -30,7 +31,7 @@ function resolveBase(mode) {
 export default defineConfig(({ mode }) => ({
   base: resolveBase(mode),
 
-  plugins: [vue(), ...(mode === 'development' ? [vueDevTools()] : [])],
+  plugins: [postsPlugin(), vue(), ...(mode === 'development' ? [vueDevTools()] : [])],
 
   resolve: {
     alias: {

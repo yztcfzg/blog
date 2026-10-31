@@ -1,16 +1,12 @@
 import { parseFrontmatter, parseDate, formatDate } from './frontmatter'
 import { site } from '../../site.config'
+import { posts as rawPosts } from 'virtual:blog-posts'
 
-// 构建时把所有 Markdown 内联进产物，运行时不再请求接口。
+// 构建时由 vite-plugin-posts 读取 content/posts 并内联进产物，
+// 草稿和日期在未来的文章不会出现在这里（也就不会被打进 JS）。
 // 新增文章：往 content/posts/ 里放一个 .md 文件即可，无需改代码。
-const modules = import.meta.glob('../../content/posts/*.md', {
-  query: '?raw',
-  import: 'default',
-  eager: true,
-})
-
-function toSlug(path) {
-  return path.split('/').pop().replace(/\.md$/i, '')
+function toSlug(file) {
+  return String(file).split('/').pop().replace(/\.md$/i, '')
 }
 
 /** 去掉 Markdown 标记，用于自动生成摘要 */
@@ -62,8 +58,8 @@ function buildPost(path, raw) {
 // 构建时刻：日期在未来的文章先不出现，等那天自动构建时才上线
 const buildTime = new Date()
 
-export const allPosts = Object.entries(modules)
-  .map(([path, raw]) => buildPost(path, raw))
+export const allPosts = rawPosts
+  .map(({ path, raw }) => buildPost(path, raw))
   .filter((post) => !post.draft && post.date <= buildTime)
   .sort((a, b) => b.date - a.date)
 
@@ -93,9 +89,10 @@ export function postsByCategory(name) {
 export const postsByYear = (() => {
   const map = new Map()
   for (const post of allPosts) {
-    const year = post.date.getFullYear()
+    // 没写日期的文章不硬塞进 1970 年
+    const year = post.dateText ? post.dateText.slice(0, 4) : '未标注日期'
     if (!map.has(year)) map.set(year, [])
     map.get(year).push(post)
   }
-  return [...map.entries()].sort((a, b) => b[0] - a[0])
+  return [...map.entries()].sort((a, b) => (Number(b[0]) || 0) - (Number(a[0]) || 0))
 })()

@@ -33,6 +33,10 @@ app.use(express.json({ limit: '4mb' }))
 app.use(express.static(path.join(here, 'public')))
 app.use('/images', express.static(IMAGES_DIR))
 app.use('/styles', express.static(path.join(FRONTEND, 'src', 'styles')))
+// 浏览器会自动请求 /favicon.ico，借用站点自己的图标，省得控制台报 404
+app.get('/favicon.ico', (req, res) => {
+  res.sendFile(path.join(FRONTEND, 'public', 'favicon.ico'))
+})
 
 // ---------- 工具 ----------
 
@@ -54,8 +58,9 @@ function slugPath(slug) {
 function yamlValue(value) {
   const text = String(value ?? '').trim()
   if (!text) return ''
-  // 含特殊字符时加引号，避免 frontmatter 解析错位
-  if (/[:#[\]{}&*!|>'"%@`]/.test(text) || /^\s|\s$/.test(text)) {
+  // 含特殊字符时加引号，避免 frontmatter 解析错位；
+  // 换行必须用 JSON 转义成 \n，否则一行标题会被写成多行并截断
+  if (/[\r\n]/.test(text) || /[:#[\]{}&*!|>'"%@`]/.test(text) || /^\s|\s$/.test(text)) {
     return JSON.stringify(text)
   }
   return text
@@ -97,6 +102,43 @@ async function pushWithProxy() {
   }
 
   return proxy
+}
+
+async function fileExists(file) {
+  try {
+    await fs.stat(file)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 把若干路径加入暂存区 → 有内容才提交 → 推送。
+ * 只看暂存区，避免工作区里作者的其它改动让 commit 空跑失败。
+ */
+async function commitAndPush(paths, message, failHint) {
+  const stageable = []
+
+  for (const relative of paths) {
+    // 已跟踪的路径（包括本次删除）和真实存在的文件才 add，
+    // 否则 git 会报 "pathspec did not match"
+    const tracked = await git(['ls-files', '--', relative])
+    if (tracked || (await fileExists(path.join(ROOT, relative)))) stageable.push(relative)
+  }
+
+  if (stageable.length) await git(['add', '--', ...stageable])
+
+  const staged = await git(['diff', '--cached', '--name-only'])
+  if (staged) await git(['commit', '-m', message])
+
+  try {
+    // 即使没有新提交也推一次，覆盖「上次提交成功但推送失败」的情况
+    return await pushWithProxy()
+  } catch (err) {
+    const detail = String(err.stderr || err.message || '')
+    throw bad(`${failHint}\n${detail.slice(0, 300)}`, 502)
+  }
 }
 
 // ---------- 配置与文章 ----------
@@ -148,6 +190,8 @@ async function writeCategories(list) {
 }
 
 async function listPostFiles() {
+  // 目录可能在运行期间被删掉（比如 git clean 或手动整理），读之前补建
+  await fs.mkdir(POSTS_DIR, { recursive: true })
   return (await fs.readdir(POSTS_DIR)).filter((file) => file.endsWith('.md'))
 }
 
@@ -162,12 +206,21 @@ async function categoryCounts() {
   return counts
 }
 
-/** 分类改名或删除时，同步迁移文章里的 category 字段 */
+/** 目录下所有 .md 的完整路径，目录不存在时补建 */
+async function markdownFiles(dir) {
+  await fs.mkdir(dir, { recursive: true })
+  return (await fs.readdir(dir))
+    .filter((file) => file.endsWith('.md'))
+    .map((file) => path.join(dir, file))
+}
+
+/** 分类改名或删除时，同步迁移文章里的 category 字段（草稿也算） */
 async function migratePosts(oldName, newName) {
   let changed = 0
 
-  for (const file of await listPostFiles()) {
-    const full = path.join(POSTS_DIR, file)
+  const files = [...(await markdownFiles(POSTS_DIR)), ...(await markdownFiles(DRAFTS_DIR))]
+
+  for (const full of files) {
     const raw = await fs.readFile(full, 'utf8')
     const current = /^category:[ \t]*(.*)$/m.exec(raw)
     if (!current) continue
@@ -357,6 +410,7 @@ app.post(
     const slug = req.params.slug
     const { title, date, category, summary, body } = req.body || {}
 
+    await fs.mkdir(DRAFTS_DIR, { recursive: true })
     await fs.writeFile(
       draftPath(slug),
       buildMarkdown({ title, date, category, summary, body }),
@@ -382,9 +436,26 @@ app.delete(
   '/api/posts/:slug',
   ah(async (req, res) => {
     const slug = req.params.slug
-    await fs.rm(slugPath(slug), { force: true })
-    await fs.rm(draftPath(slug), { force: true })
-    res.json({ ok: true })
+    const postFile = slugPath(slug)
+    const draftFile = draftPath(slug)
+    const hadPost = await fileExists(postFile)
+
+    await fs.rm(postFile, { force: true })
+    await fs.rm(draftFile, { force: true })
+
+    const relative = path.relative(ROOT, postFile).split(path.sep).join('/')
+    const proxy = await commitAndPush(
+      [relative],
+      `post: 删除 ${slug}`,
+      '文章已从本地删除并提交，但推送失败。网络恢复后再点一次删除即可（会补推）。'
+    )
+
+    res.json({
+      ok: true,
+      removed: hadPost,
+      proxy,
+      message: hadPost ? `已删除并推送${proxy ? `（代理 ${proxy}）` : ''}，1~2 分钟后下线` : '草稿已删除',
+    })
   })
 )
 
@@ -501,6 +572,7 @@ app.post(
     const published = await readMarkdown(postFile)
     if (!draft && !published) throw bad('请先保存文章')
     if (!draft) throw bad('没有需要发布的改动')
+    if (!String(draft.title || '').trim()) throw bad('标题不能为空，先写个标题再发布')
 
     const changed =
       !published ||
@@ -520,6 +592,7 @@ app.post(
     const finalDate = published?.date || draft.date || today()
     const finalUpdated = published ? today() : ''
 
+    await fs.mkdir(POSTS_DIR, { recursive: true })
     await fs.writeFile(
       postFile,
       buildMarkdown({
@@ -533,25 +606,13 @@ app.post(
       'utf8'
     )
 
+    await fs.mkdir(IMAGES_DIR, { recursive: true })
     const relative = path.relative(ROOT, postFile).split(path.sep).join('/')
-    await git(['add', '--', relative, 'frontend/public/images'])
-
-    const status = await git(['status', '--porcelain'])
-    if (status) {
-      await git(['commit', '-m', message || `post: ${slug}`])
-    }
-
-    let proxy = null
-    try {
-      // 即使没有新提交也推一次，覆盖「上次提交成功但推送失败」的情况
-      proxy = await pushWithProxy()
-    } catch (err) {
-      const detail = String(err.stderr || err.message || '')
-      throw bad(
-        '提交成功但推送失败，草稿已保留，检查 Clash 后再点一次发布。\n' + detail.slice(0, 300),
-        502
-      )
-    }
+    const proxy = await commitAndPush(
+      [relative, 'frontend/public/images'],
+      message || `post: ${slug}`,
+      '提交成功但推送失败，草稿已保留，检查 Clash 后再点一次发布。'
+    )
 
     // 推送成功才丢弃草稿，失败时用户还能接着改
     if (draft) await fs.rm(draftFile, { force: true })

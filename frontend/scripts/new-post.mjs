@@ -51,5 +51,5 @@ summary:
 
 writeFileSync(target, template, 'utf8')
 console.log(`已创建 content/posts/${slug}.md`)
-console.log(`访问地址：/#/post/${slug}`)
+console.log(`访问地址：/post/${slug}/`)
 console.log('提示：文件名就是网址，发布后不要随意改名。')

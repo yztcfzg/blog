@@ -94,7 +94,7 @@ const nearby = computed(() =>
 const prev = computed(() => nearby.value.prev)
 const next = computed(() => nearby.value.next)
 
-const isoDate = computed(() => (post.value ? post.value.date.toISOString().slice(0, 10) : ''))
+const isoDate = computed(() => (post.value ? post.value.dateText : ''))
 
 async function hydrate() {
   if (!post.value) {
@@ -114,7 +114,12 @@ async function hydrate() {
 
   await nextTick()
   await enhanceContent(contentRef.value)
-  window.scrollTo({ top: 0 })
+
+  // 标题 id 是 enhanceContent 之后才有的，所以深链要在这之后定位；
+  // 否则 /post/xxx/#小结 这种地址会被无条件滚回顶部
+  const anchor = route.hash ? document.getElementById(decodeURIComponent(route.hash.slice(1))) : null
+  if (anchor) anchor.scrollIntoView({ block: 'start' })
+  else window.scrollTo({ top: 0 })
 }
 
 function onScroll() {
@@ -127,7 +132,10 @@ function onScroll() {
 
 function scrollTo(id) {
   const el = document.getElementById(id)
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  // 把锚点写进地址栏，方便直接复制某一节的链接
+  history.replaceState(null, '', `${location.pathname}${location.search}#${id}`)
 }
 
 onMounted(() => {

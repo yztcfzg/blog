@@ -29,5 +29,5 @@ const props = defineProps({
   showCategory: { type: Boolean, default: true },
 })
 
-const isoDate = computed(() => props.post.date.toISOString().slice(0, 10))
+const isoDate = computed(() => props.post.dateText || undefined)
 </script>

@@ -18,7 +18,8 @@ const distDir = join(root, 'dist')
 // https://yourname.github.io/blog
 const siteUrl = (process.env.SITE_URL || site.url).replace(/\/$/, '')
 const homeUrl = `${siteUrl}/`
-const postUrl = (slug) => `${homeUrl}#/post/${slug}`
+// 每篇文章都预渲染成了 post/<slug>/index.html，链接用带斜杠的目录形式
+const postUrl = (slug) => `${homeUrl}post/${slug}/`
 
 function escapeXml(text) {
   return String(text)
@@ -27,6 +28,12 @@ function escapeXml(text) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;')
+}
+
+/** 本地时区的 YYYY-MM-DD，直接 toISOString() 会因为时区少一天 */
+function localDate(value) {
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`
 }
 
 function loadPosts() {
@@ -57,13 +64,16 @@ function loadPosts() {
         category: data.category ? String(data.category).trim() : '',
         summary: data.summary || plain.slice(0, 120),
         draft: String(data.draft) === 'true',
+        hasDate: Boolean(data.date),
       }
     })
     .filter((post) => !post.draft)
     .sort((a, b) => b.date - a.date)
 }
 
-const posts = loadPosts().filter((post) => !post.draft && post.date <= new Date())
+const all = loadPosts().filter((post) => !post.draft && post.date <= new Date())
+// 没写日期的文章没有可靠的发布时间，RSS 里跳过，sitemap 里保留但不写 lastmod
+const posts = all.filter((post) => post.hasDate)
 
 if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true })
 
@@ -96,26 +106,28 @@ ${post.category ? `      <category>${escapeXml(post.category)}</category>` : ''}
 // ---------- sitemap ----------
 const staticPages = [
   '',
-  'archive',
-  'about',
-  ...(site.categories || []).map((name) => `category/${encodeURIComponent(name)}`),
+  'archive/',
+  'about/',
+  ...(site.categories || []).map((name) => `category/${encodeURIComponent(name)}/`),
 ]
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${staticPages
   .map(
     (page) => `  <url>
-    <loc>${escapeXml(`${homeUrl}#/${page}`)}</loc>
+    <loc>${escapeXml(`${homeUrl}${page}`)}</loc>
   </url>`
   )
   .join('\n')}
-${posts
-  .map(
-    (post) => `  <url>
-    <loc>${escapeXml(postUrl(post.slug))}</loc>
-    <lastmod>${(post.updated || post.date).toISOString().slice(0, 10)}</lastmod>
+${all
+  .map((post) => {
+    const stamp = post.updated?.getTime() ? post.updated : post.date
+    const lastmod =
+      post.hasDate && stamp?.getTime() ? `\n    <lastmod>${localDate(stamp)}</lastmod>` : ''
+    return `  <url>
+    <loc>${escapeXml(postUrl(post.slug))}</loc>${lastmod}
   </url>`
-  )
+  })
   .join('\n')}
 </urlset>
 `

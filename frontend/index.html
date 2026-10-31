@@ -26,6 +26,18 @@
         } catch (e) {}
       })()
     </script>
+    <script>
+      // 旧的 hash 地址（/blog/#/post/xxx、早期 RSS 与分享链接）换成真实路径。
+      // 必须放在模块脚本之前：路由在模块求值时就会记下初始地址，晚一步重定向会被覆盖。
+      ;(function () {
+        var hash = location.hash
+        if (hash.indexOf('#/') !== 0) return
+        var pathname = location.pathname
+        if (!/(\/|index\.html)$/.test(pathname)) return
+        var base = pathname.replace(/index\.html$/, '')
+        location.replace(base.replace(/\/$/, '') + hash.slice(1))
+      })()
+    </script>
   </head>
   <body>
     <div id="app"></div>

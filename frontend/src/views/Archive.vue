@@ -14,7 +14,7 @@
         :to="`/post/${post.slug}`"
         class="archive-row"
       >
-        <span class="archive-row__date">{{ post.dateText.slice(5) }}</span>
+        <span class="archive-row__date">{{ post.dateText ? post.dateText.slice(5) : '—' }}</span>
         <span class="archive-row__title">{{ post.title }}</span>
       </router-link>
     </section>
