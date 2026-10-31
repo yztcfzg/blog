@@ -33,8 +33,13 @@
             autocomplete="off"
           />
           <div class="topbar__actions">
+            <span class="doc-state" id="docState"></span>
             <span class="save-state" id="saveState"></span>
-            <button class="btn" id="saveBtn">保存</button>
+            <button class="btn btn--ghost" id="historyBtn" title="历史版本">历史</button>
+            <button class="btn btn--ghost" id="discardBtn" title="丢弃草稿，回到线上版本" hidden>
+              放弃
+            </button>
+            <button class="btn" id="saveBtn" title="保存为草稿（Ctrl+S）">保存</button>
             <button class="btn btn--primary" id="publishBtn">发布</button>
           </div>
         </div>
@@ -108,6 +113,14 @@
         <input id="newCategoryInput" placeholder="新分类名称" maxlength="16" />
         <button class="btn btn--primary" id="addCategoryBtn" type="button">添加</button>
       </div>
+    </dialog>
+
+    <dialog class="dialog" id="historyDialog">
+      <form method="dialog" class="dialog__head">
+        <h2 class="dialog__title">历史版本</h2>
+        <button class="icon-btn" value="close" aria-label="关闭">×</button>
+      </form>
+      <div class="dialog__body" id="historyList"></div>
     </dialog>
 
     <script type="module" src="/editor.js"></script>

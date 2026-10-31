@@ -16,6 +16,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(here, '..')
 const FRONTEND = path.join(ROOT, 'frontend')
 const POSTS_DIR = path.join(FRONTEND, 'content', 'posts')
+const DRAFTS_DIR = path.join(FRONTEND, 'content', 'drafts')
 const IMAGES_DIR = path.join(FRONTEND, 'public', 'images')
 const CONFIG_FILE = path.join(FRONTEND, 'site.config.js')
 const PORT = Number(process.env.PORT || 4310)
@@ -24,6 +25,7 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,80}$/
 const IMAGE_EXT = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']
 
 await fs.mkdir(POSTS_DIR, { recursive: true })
+await fs.mkdir(DRAFTS_DIR, { recursive: true })
 await fs.mkdir(IMAGES_DIR, { recursive: true })
 
 const app = express()
@@ -240,23 +242,93 @@ app.delete(
   })
 )
 
+// ---------- 文章与草稿 ----------
+// 草稿和正式文章物理分开：保存只动草稿，正式文件永远停在最后一次发布的样子。
+
+function draftPath(slug) {
+  if (!SLUG_RE.test(String(slug || ''))) {
+    throw bad('网址只能用小写字母、数字和连字符')
+  }
+  return path.join(DRAFTS_DIR, `${slug}.md`)
+}
+
+async function readMarkdown(file) {
+  try {
+    const raw = await fs.readFile(file, 'utf8')
+    const { data, body } = parseFrontmatter(raw)
+    return {
+      title: data.title || '',
+      date: data.date || '',
+      category: data.category || '',
+      summary: data.summary || '',
+      body,
+      raw,
+    }
+  } catch {
+    return null
+  }
+}
+
+function buildMarkdown({ title, date, category, summary, body, draft }) {
+  const lines = ['---', `title: ${yamlValue(title)}`, `date: ${date || today()}`]
+  if (category) lines.push(`category: ${yamlValue(category)}`)
+  if (summary) lines.push(`summary: ${yamlValue(summary)}`)
+  if (draft) lines.push('draft: true')
+  lines.push('---', '')
+
+  return lines.join('\n') + (body || '')
+}
+
+function toPublic(slug, entry) {
+  if (!entry) return null
+  return {
+    slug,
+    title: entry.title,
+    date: entry.date,
+    category: entry.category,
+    summary: entry.summary,
+    body: entry.body,
+  }
+}
+
+async function listSlugs(dir) {
+  try {
+    return (await fs.readdir(dir))
+      .filter((file) => file.endsWith('.md'))
+      .map((file) => file.replace(/\.md$/, ''))
+  } catch {
+    return []
+  }
+}
+
 app.get(
   '/api/posts',
   ah(async (req, res) => {
-    const files = (await fs.readdir(POSTS_DIR)).filter((f) => f.endsWith('.md'))
+    const publishedSlugs = new Set(await listSlugs(POSTS_DIR))
+    const draftSlugs = new Set(await listSlugs(DRAFTS_DIR))
+    const slugs = [...new Set([...publishedSlugs, ...draftSlugs])]
+
     const posts = await Promise.all(
-      files.map(async (file) => {
-        const raw = await fs.readFile(path.join(POSTS_DIR, file), 'utf8')
-        const { data } = parseFrontmatter(raw)
+      slugs.map(async (slug) => {
+        const published = publishedSlugs.has(slug)
+          ? await readMarkdown(path.join(POSTS_DIR, `${slug}.md`))
+          : null
+        const draft = draftSlugs.has(slug)
+          ? await readMarkdown(path.join(DRAFTS_DIR, `${slug}.md`))
+          : null
+        const source = draft || published
+
         return {
-          slug: file.replace(/\.md$/, ''),
-          title: data.title || file,
-          date: data.date || '',
-          category: data.category || '',
-          draft: String(data.draft) === 'true',
+          slug,
+          title: source?.title || slug,
+          date: source?.date || '',
+          category: source?.category || '',
+          published: Boolean(published),
+          hasDraft: Boolean(draft),
         }
       })
     )
+
     posts.sort((a, b) => String(b.date).localeCompare(String(a.date)))
     res.json({ posts })
   })
@@ -265,51 +337,115 @@ app.get(
 app.get(
   '/api/posts/:slug',
   ah(async (req, res) => {
-    const file = slugPath(req.params.slug)
-    let raw
-    try {
-      raw = await fs.readFile(file, 'utf8')
-    } catch {
-      throw bad('文章不存在', 404)
-    }
-    const { data, body } = parseFrontmatter(raw)
-    res.json({
-      slug: req.params.slug,
-      title: data.title || '',
-      date: data.date || '',
-      category: data.category || '',
-      summary: data.summary || '',
-      draft: String(data.draft) === 'true',
-      body,
-    })
+    const slug = req.params.slug
+    const published = await readMarkdown(slugPath(slug))
+    const draft = await readMarkdown(draftPath(slug))
+
+    if (!published && !draft) throw bad('文章不存在', 404)
+
+    res.json({ slug, published: toPublic(slug, published), draft: toPublic(slug, draft) })
   })
 )
 
+// 保存草稿：只写 drafts/，正式文章不受影响
 app.post(
-  '/api/posts',
+  '/api/posts/:slug/draft',
   ah(async (req, res) => {
-    const { slug, title, date, category, summary, body, draft } = req.body || {}
-    const file = slugPath(slug)
-
+    const slug = req.params.slug
+    const { title, date, category, summary, body } = req.body || {}
     if (!String(title || '').trim()) throw bad('标题不能为空')
 
-    const lines = ['---', `title: ${yamlValue(title)}`, `date: ${date || today()}`]
-    if (category) lines.push(`category: ${yamlValue(category)}`)
-    if (summary) lines.push(`summary: ${yamlValue(summary)}`)
-    if (draft) lines.push('draft: true')
-    lines.push('---', '')
-
-    await fs.writeFile(file, lines.join('\n') + (body || ''), 'utf8')
+    await fs.writeFile(
+      draftPath(slug),
+      buildMarkdown({ title, date, category, summary, body }),
+      'utf8'
+    )
     res.json({ ok: true, slug })
+  })
+)
+
+app.delete(
+  '/api/posts/:slug/draft',
+  ah(async (req, res) => {
+    try {
+      await fs.unlink(draftPath(req.params.slug))
+    } catch {
+      throw bad('没有可丢弃的草稿', 404)
+    }
+    res.json({ ok: true })
   })
 )
 
 app.delete(
   '/api/posts/:slug',
   ah(async (req, res) => {
-    const file = slugPath(req.params.slug)
-    await fs.unlink(file)
+    const slug = req.params.slug
+    await fs.rm(slugPath(slug), { force: true })
+    await fs.rm(draftPath(slug), { force: true })
     res.json({ ok: true })
+  })
+)
+
+// ---------- 版本历史（来自 git，天然保留每次发布的整份文件） ----------
+
+const HISTORY_LIMIT = 20
+
+app.get(
+  '/api/posts/:slug/history',
+  ah(async (req, res) => {
+    const slug = req.params.slug
+    if (!SLUG_RE.test(slug)) throw bad('网址不合法')
+
+    const relative = `frontend/content/posts/${slug}.md`
+    let stdout = ''
+    try {
+      stdout = await git([
+        'log',
+        `--max-count=${HISTORY_LIMIT}`,
+        '--date=iso',
+        '--format=%H%x1f%ad%x1f%s',
+        '--',
+        relative,
+      ])
+    } catch {
+      return res.json({ versions: [] })
+    }
+
+    const versions = stdout
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const [hash, date, message] = line.split('\x1f')
+        return { hash, date, message }
+      })
+
+    res.json({ versions })
+  })
+)
+
+app.get(
+  '/api/posts/:slug/history/:hash',
+  ah(async (req, res) => {
+    const { slug, hash } = req.params
+    if (!SLUG_RE.test(slug) || !/^[0-9a-f]{7,40}$/i.test(hash)) throw bad('参数不合法')
+
+    const relative = `frontend/content/posts/${slug}.md`
+    let raw = ''
+    try {
+      raw = await git(['show', `${hash}:${relative}`])
+    } catch {
+      throw bad('这个版本不存在', 404)
+    }
+
+    const { data, body } = parseFrontmatter(raw)
+    res.json({
+      hash,
+      title: data.title || '',
+      date: data.date || '',
+      category: data.category || '',
+      summary: data.summary || '',
+      body,
+    })
   })
 )
 
@@ -356,37 +492,45 @@ app.post(
   '/api/publish',
   ah(async (req, res) => {
     const { slug, message } = req.body || {}
-    const file = slugPath(slug)
+    const postFile = slugPath(slug)
+    const draftFile = draftPath(slug)
 
-    try {
-      await fs.access(file)
-    } catch {
-      throw bad('请先保存文章')
+    const draft = await readMarkdown(draftFile)
+    const published = await readMarkdown(postFile)
+    if (!draft && !published) throw bad('请先保存文章')
+
+    // 有草稿才提升为正式文章；没有草稿说明正式文件就是最后发布的样子
+    const promoted = Boolean(draft)
+    if (draft) {
+      await fs.writeFile(postFile, draft.raw, 'utf8')
     }
 
-    const relative = path.relative(ROOT, file).split(path.sep).join('/')
+    const relative = path.relative(ROOT, postFile).split(path.sep).join('/')
     await git(['add', '--', relative, 'frontend/public/images'])
 
     const status = await git(['status', '--porcelain'])
-    if (!status) {
-      return res.json({ ok: true, skipped: true, message: '没有需要提交的改动' })
+    if (status) {
+      await git(['commit', '-m', message || `post: ${slug}`])
     }
-
-    await git(['commit', '-m', message || `post: ${slug}`])
 
     let proxy = null
     try {
+      // 即使没有新提交也推一次，覆盖「上次提交成功但推送失败」的情况
       proxy = await pushWithProxy()
     } catch (err) {
       const detail = String(err.stderr || err.message || '')
       throw bad(
-        '提交成功但推送失败，检查 Clash 是否开启后再点一次发布。\n' + detail.slice(0, 300),
+        '提交成功但推送失败，草稿已保留，检查 Clash 后再点一次发布。\n' + detail.slice(0, 300),
         502
       )
     }
 
+    // 推送成功才丢弃草稿，失败时用户还能接着改
+    if (draft) await fs.rm(draftFile, { force: true })
+
     res.json({
       ok: true,
+      promoted,
       message: `已推送${proxy ? `（代理 ${proxy}）` : ''}，1~2 分钟后上线`,
       proxy,
     })

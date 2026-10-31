@@ -40,5 +40,8 @@ build/
 ### 本地临时文件 ###
 .tmp/
 node_modules/
+
+### 未发布的草稿（只在本地，发布后才进仓库） ###
+frontend/content/drafts/
 ### IDE ###
 .idea/

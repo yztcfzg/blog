@@ -18,6 +18,11 @@ const els = {
   addCategoryBtn: $('addCategoryBtn'),
   openSiteBtn: $('openSiteBtn'),
   saveState: $('saveState'),
+  docState: $('docState'),
+  historyBtn: $('historyBtn'),
+  discardBtn: $('discardBtn'),
+  historyDialog: $('historyDialog'),
+  historyList: $('historyList'),
   list: $('postList'),
   fileInput: $('fileInput'),
   saveBtn: $('saveBtn'),
@@ -31,6 +36,8 @@ const state = {
   posts: [],
   categories: [],
   dirty: false,
+  hasDraft: false,
+  published: false,
 }
 
 let previewTimer = null
@@ -223,7 +230,7 @@ function renderList() {
         <span class="post-item__meta">
           ${post.date ? `<span>${escapeHtml(post.date)}</span>` : ''}
           ${post.category ? `<span>${escapeHtml(post.category)}</span>` : ''}
-          ${post.draft ? '<span>草稿</span>' : ''}
+          ${post.hasDraft ? '<span>草稿</span>' : ''}
         </span>
       </button>`
     )
@@ -231,28 +238,67 @@ function renderList() {
 }
 
 // ---------- 草稿 ----------
+// 草稿写 content/drafts/，正式文章只在「发布」时被覆盖，
+// 所以再怎么改、怎么存，线上内容都停在最后一次发布的样子。
 
-// 还没有 slug 的新文章用 new 作为临时键，保存后再迁到正式键
-const draftKey = (slug) => `blog-editor:${slug || 'new'}`
-
-function saveDraft({ force = false } = {}) {
-  if (!force && !state.dirty) return false
-  try {
-    localStorage.setItem(
-      draftKey(state.slug),
-      JSON.stringify({ body: els.source.value, title: els.title.value })
-    )
-    return true
-  } catch {
-    return false
+function currentPayload() {
+  return {
+    title: els.title.value.trim(),
+    date: els.date.value || todayISO(),
+    category: els.category.value,
+    summary: els.summary.value.trim(),
+    body: els.source.value,
   }
 }
 
-function clearDraft(slug) {
+function updateDocState() {
+  const el = els.docState
+
+  if (state.hasDraft) {
+    el.textContent = state.published ? '有未发布的改动' : '未发布'
+    el.className = 'doc-state is-draft'
+  } else if (state.published) {
+    el.textContent = '已发布'
+    el.className = 'doc-state is-published'
+  } else {
+    el.textContent = '新文章'
+    el.className = 'doc-state'
+  }
+
+  els.discardBtn.hidden = !(state.hasDraft && state.published)
+}
+
+/**
+ * 把编辑器内容写成草稿文件。
+ * quiet=true 时不打扰用户（实时保存、切换文章时用），也不刷新列表。
+ */
+async function persistDraft({ quiet = false, refresh = null } = {}) {
+  const slug = els.slug.value.trim()
+
+  if (!/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+    if (!quiet) setStatus('网址只能用小写字母、数字和连字符', 'error')
+    return false
+  }
+
   try {
-    localStorage.removeItem(draftKey(slug))
-  } catch {
-    /* ignore */
+    await api(`/api/posts/${encodeURIComponent(slug)}/draft`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(currentPayload()),
+    })
+
+    state.slug = slug
+    state.dirty = false
+    state.hasDraft = true
+    setSaveState('')
+    updateDocState()
+
+    if (refresh ?? !quiet) await refreshList()
+    if (!quiet) setStatus('草稿已保存', 'ok')
+    return true
+  } catch (err) {
+    if (!quiet) setStatus(err.message, 'error')
+    return false
   }
 }
 
@@ -261,58 +307,43 @@ function clearDraft(slug) {
 async function openPost(slug, { skipConfirm = false } = {}) {
   if (state.dirty && !skipConfirm) {
     if (!confirm('当前修改还没保存，确定切换吗？')) return
-    // 用户确认离开，先把未保存的内容留在草稿里
-    saveDraft({ force: true })
+    await persistDraft({ quiet: true })
   }
 
-  const post = await api(`/api/posts/${encodeURIComponent(slug)}`)
-  state.slug = post.slug
+  const data = await api(`/api/posts/${encodeURIComponent(slug)}`)
+  // 有草稿就打开草稿，没有就打开线上版本
+  const source = data.draft || data.published
+
+  state.slug = data.slug
   state.dirty = false
+  state.hasDraft = Boolean(data.draft)
+  state.published = Boolean(data.published)
 
-  els.title.value = post.title
-  els.date.value = post.date || todayISO()
-  els.category.value = post.category || ''
-  els.slug.value = post.slug
-  els.summary.value = post.summary || ''
-  els.source.value = post.body
+  els.title.value = source?.title || ''
+  els.date.value = source?.date || todayISO()
+  els.category.value = source?.category || ''
+  els.slug.value = data.slug
+  els.summary.value = source?.summary || ''
+  els.source.value = source?.body || ''
 
-  location.hash = post.slug
+  location.hash = data.slug
   setSaveState('')
+  updateDocState()
   renderList()
   renderPreview()
   updateCount()
-
-  requestAnimationFrame(() => {
-    const raw = localStorage.getItem(draftKey(post.slug))
-    if (!raw) return
-    try {
-      const draft = JSON.parse(raw)
-      if (draft.body && draft.body !== post.body) {
-        if (confirm('发现上次未保存的内容，要恢复吗？')) {
-          els.source.value = draft.body
-          if (draft.title) els.title.value = draft.title
-          state.dirty = true
-          setSaveState('已恢复草稿')
-          renderPreview()
-          updateCount()
-        } else {
-          clearDraft(post.slug)
-        }
-      }
-    } catch {
-      clearDraft(post.slug)
-    }
-  })
 }
 
-function newPost() {
+async function newPost() {
   if (state.dirty) {
     if (!confirm('当前修改还没保存，确定新建吗？')) return
-    saveDraft({ force: true })
+    await persistDraft({ quiet: true })
   }
 
   state.slug = ''
   state.dirty = false
+  state.hasDraft = false
+  state.published = false
   slugAutoValue = ''
 
   els.title.value = ''
@@ -327,6 +358,7 @@ function newPost() {
   history.replaceState(null, '', location.pathname + location.search)
   setSaveState('')
   setStatus('')
+  updateDocState()
   renderList()
   elPreviewEmpty()
   updateCount()
@@ -385,11 +417,13 @@ function onInput() {
   updateCount()
   schedulePreview()
 
-  // 停下 300ms 就把草稿落盘，状态栏会提示「草稿已保存」
+  // 停下 600ms 就把草稿写进 content/drafts/，正式文章不受影响
   clearTimeout(draftTimer)
-  draftTimer = setTimeout(() => {
-    if (saveDraft() && state.dirty) setSaveState('草稿已保存')
-  }, 300)
+  draftTimer = setTimeout(async () => {
+    if (!state.dirty) return
+    const ok = await persistDraft({ quiet: true, refresh: false })
+    if (ok) setSaveState('草稿已保存')
+  }, 600)
 }
 
 // ---------- 编辑操作 ----------
@@ -476,17 +510,10 @@ async function uploadImage(file) {
 
 // ---------- 保存与发布 ----------
 
-async function save({ silent = false } = {}) {
-  const title = els.title.value.trim()
-  if (!title) {
-    setStatus('标题不能为空', 'error')
-    els.title.focus()
-    return false
-  }
-
+async function save() {
   let slug = els.slug.value.trim()
   if (!slug) {
-    slug = uniqueSlug(suggestSlug(title))
+    slug = uniqueSlug(suggestSlug(els.title.value.trim()))
     els.slug.value = slug
   }
 
@@ -502,31 +529,7 @@ async function save({ silent = false } = {}) {
     return false
   }
 
-  if (!silent) setStatus('保存中…')
-
-  try {
-    await postJSON('/api/posts', {
-      slug,
-      title,
-      date: els.date.value || todayISO(),
-      category: els.category.value,
-      summary: els.summary.value.trim(),
-      body: els.source.value,
-    })
-
-    state.slug = slug
-    state.dirty = false
-    location.hash = slug
-    clearDraft(slug)
-    clearDraft('')
-    setSaveState('')
-    await refreshList()
-    if (!silent) setStatus('已保存', 'ok')
-    return true
-  } catch (err) {
-    setStatus(err.message, 'error')
-    return false
-  }
+  return persistDraft({ quiet: false })
 }
 
 async function publish() {
@@ -537,28 +540,111 @@ async function publish() {
     return
   }
 
-  if (!confirm(`发布《${title}》到线上？`)) return
+  if (!confirm(`发布《${title}》到线上？\n\n当前草稿会覆盖线上版本。`)) return
 
-  // 发布前先强制存一份本地草稿，再写盘：任何一步失败，内容都还在
-  saveDraft({ force: true })
-
-  const ok = await save({ silent: true })
-  if (!ok) return
+  // 先落草稿再发布：推送失败时草稿还在，重试即可
+  const saved = await persistDraft({ quiet: true })
+  if (!saved) return
 
   els.publishBtn.disabled = true
-  setStatus('已保存，正在提交并推送…')
+  setStatus('正在提交并推送…')
 
   try {
     const data = await postJSON('/api/publish', {
       slug: state.slug,
       message: `post: ${title}`,
     })
+
+    state.hasDraft = false
+    state.published = true
+    state.dirty = false
+    updateDocState()
+    await refreshList()
+
     setStatus(data.message || '已发布', 'ok')
     if (data.proxy) els.proxyInfo.textContent = `代理 ${data.proxy}`
   } catch (err) {
     setStatus(err.message, 'error')
   } finally {
     els.publishBtn.disabled = false
+  }
+}
+
+async function discardDraft() {
+  if (!state.slug) return
+  if (!confirm('放弃这份草稿？编辑器会回到线上已发布的版本。')) return
+
+  try {
+    await api(`/api/posts/${encodeURIComponent(state.slug)}/draft`, { method: 'DELETE' })
+    await openPost(state.slug, { skipConfirm: true })
+    setStatus('已回到线上版本', 'ok')
+  } catch (err) {
+    setStatus(err.message, 'error')
+  }
+}
+
+// ---------- 历史版本 ----------
+
+function formatHistoryDate(text) {
+  const date = new Date(text)
+  if (Number.isNaN(date.getTime())) return text
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+async function openHistory() {
+  if (!state.slug) {
+    setStatus('先保存一次才有历史版本', 'error')
+    return
+  }
+
+  let versions = []
+  try {
+    const data = await api(`/api/posts/${encodeURIComponent(state.slug)}/history`)
+    versions = data.versions || []
+  } catch {
+    versions = []
+  }
+
+  if (!versions.length) {
+    els.historyList.innerHTML = '<p class="sidebar__empty">还没有发布过，没有历史版本</p>'
+  } else {
+    els.historyList.innerHTML = versions
+      .map(
+        (version) => `
+        <button class="history-row" data-hash="${version.hash}">
+          <span class="history-row__date">${escapeHtml(formatHistoryDate(version.date))}</span>
+          <span class="history-row__msg">${escapeHtml(version.message || '（无说明）')}</span>
+        </button>`
+      )
+      .join('')
+  }
+
+  els.historyDialog.showModal()
+}
+
+async function loadHistoryVersion(hash) {
+  try {
+    const version = await api(
+      `/api/posts/${encodeURIComponent(state.slug)}/history/${hash}`
+    )
+
+    if (!confirm('把这个版本载入编辑器？\n\n当前内容会变成草稿，线上文章仍然不动。')) return
+
+    els.title.value = version.title || els.title.value
+    els.date.value = version.date || els.date.value
+    els.category.value = version.category || els.category.value
+    els.summary.value = version.summary || ''
+    els.source.value = version.body || ''
+
+    state.dirty = true
+    setSaveState('已载入历史版本')
+    els.historyDialog.close()
+    renderPreview()
+    updateCount()
+    setStatus('历史版本已载入，保存后成为草稿', 'ok')
+  } catch (err) {
+    setStatus(err.message, 'error')
   }
 }
 
@@ -665,15 +751,38 @@ function bind() {
 
   window.addEventListener('beforeunload', (event) => {
     if (!state.dirty) return
-    // 关页面前再兜一次，防止最后几个字没来得及写进草稿
-    saveDraft({ force: true })
+
+    // 页面要卸载了，用 sendBeacon 抢在关闭前把草稿发出去
+    try {
+      const slug = els.slug.value.trim()
+      if (/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+        navigator.sendBeacon(
+          `/api/posts/${encodeURIComponent(slug)}/draft`,
+          new Blob([JSON.stringify(currentPayload())], { type: 'application/json' })
+        )
+      }
+    } catch {
+      /* 存不上就算了，别拦住用户 */
+    }
+
     event.preventDefault()
     event.returnValue = ''
   })
 
   // 切到别的标签页 / 最小化时也立刻存一份
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') saveDraft({ force: true })
+    if (document.visibilityState === 'hidden' && state.dirty) {
+      persistDraft({ quiet: true, refresh: false })
+    }
+  })
+
+  els.historyBtn.addEventListener('click', openHistory)
+
+  els.discardBtn.addEventListener('click', discardDraft)
+
+  els.historyList.addEventListener('click', (event) => {
+    const row = event.target.closest('.history-row')
+    if (row) loadHistoryVersion(row.dataset.hash)
   })
 }
 
@@ -704,6 +813,10 @@ async function init() {
 
     if (new URLSearchParams(location.search).has('categories')) {
       openCategoryDialog()
+    }
+
+    if (new URLSearchParams(location.search).has('history')) {
+      openHistory()
     }
   } catch (err) {
     document.body.innerHTML = `<p style="padding:40px;font-family:sans-serif">写作台启动失败：${escapeHtml(err.message)}</p>`
