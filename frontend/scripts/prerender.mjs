@@ -386,8 +386,10 @@ for (const name of categories) {
     `/category/${name}/`
   )
 
+  // 目录名用真实的中文分类名：GitHub Pages 会先把 URL 解码再找文件，
+  // 写成 %E9%9A%8F%E7%AC%94 这种字面编码反而 404
   writePage(
-    `category/${encodeURIComponent(name)}/index.html`,
+    `category/${name}/index.html`,
     pageHtml({
       title: `${name} · ${site.title}`,
       description: `${name}分类下的文章，共 ${list.length} 篇。`,
