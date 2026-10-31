@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>写作台</title>
+    <link rel="stylesheet" href="/styles/main.css" />
+    <link rel="stylesheet" href="/editor.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="sidebar__head">
+          <span class="sidebar__title" id="siteTitle">写作台</span>
+          <button class="icon-btn" id="newBtn" title="新建文章">＋</button>
+        </div>
+        <div class="sidebar__list" id="postList"></div>
+      </aside>
+
+      <main class="workspace">
+        <div class="topbar">
+          <input
+            class="title-input"
+            id="titleInput"
+            placeholder="标题"
+            autocomplete="off"
+          />
+          <div class="topbar__actions">
+            <span class="save-state" id="saveState"></span>
+            <button class="btn" id="saveBtn">保存</button>
+            <button class="btn btn--primary" id="publishBtn">发布</button>
+          </div>
+        </div>
+
+        <div class="meta-bar">
+          <label class="field field--date">
+            <span>日期</span>
+            <input type="date" id="dateInput" />
+          </label>
+          <label class="field field--category">
+            <span>分类</span>
+            <select id="categorySelect"></select>
+          </label>
+          <label class="field field--grow">
+            <span>网址</span>
+            <input id="slugInput" placeholder="post-slug" autocomplete="off" />
+          </label>
+          <label class="field field--grow">
+            <span>摘要</span>
+            <input id="summaryInput" placeholder="留空则自动截取正文" autocomplete="off" />
+          </label>
+        </div>
+
+        <div class="toolbar">
+          <button data-cmd="h2" title="二级标题">H2</button>
+          <button data-cmd="h3" title="三级标题">H3</button>
+          <i class="sep"></i>
+          <button data-cmd="bold" title="加粗（Ctrl+B）"><b>B</b></button>
+          <button data-cmd="italic" title="斜体（Ctrl+I）"><em>I</em></button>
+          <i class="sep"></i>
+          <button data-cmd="quote" title="引用">引用</button>
+          <button data-cmd="ul" title="无序列表">• 列表</button>
+          <button data-cmd="ol" title="有序列表">1. 列表</button>
+          <button data-cmd="code" title="代码块">代码</button>
+          <button data-cmd="link" title="链接">链接</button>
+          <button data-cmd="image" title="插入图片">图片</button>
+          <button data-cmd="hr" title="分隔线">分隔线</button>
+          <span class="toolbar__tip">可直接粘贴或拖入图片</span>
+        </div>
+
+        <div class="panes">
+          <textarea
+            id="source"
+            spellcheck="false"
+            placeholder="开始写点什么……"
+          ></textarea>
+          <div class="preview">
+            <div class="prose" id="preview"></div>
+          </div>
+        </div>
+
+        <div class="statusbar">
+          <span id="status"></span>
+          <span class="statusbar__meta" id="wordCount"></span>
+        </div>
+      </main>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*" multiple hidden />
+    <script type="module" src="/editor.js"></script>
+  </body>
+</html>

@@ -39,5 +39,6 @@ build/
 
 ### 本地临时文件 ###
 .tmp/
+node_modules/
 ### IDE ###
 .idea/
