@@ -22,7 +22,7 @@ title: 关于
 
 ## 联系
 
-- GitHub：[@yztc](https://github.com/yztc)
+- GitHub：[@CUHKlyc](https://github.com/CUHKlyc)
 - 邮箱：留空，还没想好要不要公开
 
 > 这个页面也是 Markdown，文件在 `frontend/content/about.md`，随时可以改。
