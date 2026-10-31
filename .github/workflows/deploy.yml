@@ -3,6 +3,10 @@ name: Deploy Blog
 on:
   push:
     branches: [main]
+  # 每天 01:00 UTC（北京时间 09:00）重新构建，
+  # 让日期写在未来的文章到点自动上线
+  schedule:
+    - cron: '0 1 * * *'
   workflow_dispatch:
 
 permissions:

@@ -50,6 +50,8 @@ function buildPost(path, raw) {
     updated: data.updated ? parseDate(data.updated) : null,
     updatedText: data.updated ? formatDate(data.updated) : '',
     category: data.category ? String(data.category).trim() : '',
+    // 封面图，用于社交分享卡片
+    cover: data.cover ? String(data.cover).trim() : '',
     summary,
     body,
     readingTime: readingTime(body),
@@ -57,9 +59,12 @@ function buildPost(path, raw) {
   }
 }
 
+// 构建时刻：日期在未来的文章先不出现，等那天自动构建时才上线
+const buildTime = new Date()
+
 export const allPosts = Object.entries(modules)
   .map(([path, raw]) => buildPost(path, raw))
-  .filter((post) => !post.draft)
+  .filter((post) => !post.draft && post.date <= buildTime)
   .sort((a, b) => b.date - a.date)
 
 export function findPost(slug) {

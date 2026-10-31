@@ -569,6 +569,13 @@ async function publish() {
     await refreshList()
 
     setStatus(data.message || '已发布', 'ok')
+
+    // 日期写的是未来的话，文章要等到那天才会出现在站上
+    const publishDate = els.date.value
+    if (publishDate && publishDate > todayISO()) {
+      setStatus(`已推送，将在 ${publishDate} 自动上线`, 'ok')
+    }
+
     if (data.proxy) els.proxyInfo.textContent = `代理 ${data.proxy}`
   } catch (err) {
     setStatus(err.message, 'error')

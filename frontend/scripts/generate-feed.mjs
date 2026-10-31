@@ -63,7 +63,7 @@ function loadPosts() {
     .sort((a, b) => b.date - a.date)
 }
 
-const posts = loadPosts()
+const posts = loadPosts().filter((post) => !post.draft && post.date <= new Date())
 
 if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true })
 

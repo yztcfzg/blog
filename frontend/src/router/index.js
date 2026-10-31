@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { site } from '../../site.config'
+import { setCanonical, setJsonLd, setPageMeta } from '../lib/seo'
 import Home from '../views/Home.vue'
 
 const routes = [
@@ -52,13 +53,15 @@ const titles = {
 }
 
 router.afterEach((to) => {
-  // 文章页会由组件自己设置更精确的标题
-  if (to.name !== 'post') {
-    document.title = titles[to.name] || site.title
-  }
-  document
-    .querySelector('meta[name="description"]')
-    ?.setAttribute('content', site.description)
+  // 文章页会自己设置更精确的标题、描述和结构化数据
+  if (to.name === 'post') return
+
+  setPageMeta({
+    title: titles[to.name] || site.title,
+    description: site.description,
+  })
+  setCanonical(to.fullPath)
+  setJsonLd(null)
 })
 
 export default router

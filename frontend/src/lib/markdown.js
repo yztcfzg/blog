@@ -123,6 +123,12 @@ export async function enhanceContent(root) {
     }
   })
 
+  // 图片懒加载：长文里的图片不必挤在首屏一起下载
+  root.querySelectorAll('img').forEach((img) => {
+    if (!img.getAttribute('loading')) img.setAttribute('loading', 'lazy')
+    if (!img.getAttribute('decoding')) img.setAttribute('decoding', 'async')
+  })
+
   const blocks = root.querySelectorAll('pre')
   if (blocks.length) {
     const declaredList = [...blocks].map((pre) => {

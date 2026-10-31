@@ -78,6 +78,7 @@ import { useRoute } from 'vue-router'
 import { site } from '../../site.config'
 import { findPost, neighbors } from '../lib/posts'
 import { renderMarkdown, enhanceContent, extractToc } from '../lib/markdown'
+import { absolute, setArticleJsonLd, setCanonical, setJsonLd, setPageMeta } from '../lib/seo'
 import NotFound from './NotFound.vue'
 
 const route = useRoute()
@@ -98,12 +99,18 @@ const isoDate = computed(() => (post.value ? post.value.date.toISOString().slice
 async function hydrate() {
   if (!post.value) {
     document.title = `页面不存在 · ${site.title}`
+    setJsonLd(null)
     return
   }
-  document.title = `${post.value.title} · ${site.title}`
-  document
-    .querySelector('meta[name="description"]')
-    ?.setAttribute('content', post.value.summary || site.description)
+
+  setPageMeta({
+    title: `${post.value.title} · ${site.title}`,
+    description: post.value.summary || site.description,
+    image: post.value.cover ? absolute(post.value.cover) : undefined,
+    type: 'article',
+  })
+  setCanonical(`/post/${post.value.slug}`)
+  setArticleJsonLd(post.value)
 
   await nextTick()
   await enhanceContent(contentRef.value)
