@@ -1,4 +1,5 @@
 import { parseFrontmatter, parseDate, formatDate } from './frontmatter'
+import { site } from '../../site.config'
 
 // 构建时把所有 Markdown 内联进产物，运行时不再请求接口。
 // 新增文章：往 content/posts/ 里放一个 .md 文件即可，无需改代码。
@@ -10,15 +11,6 @@ const modules = import.meta.glob('../../content/posts/*.md', {
 
 function toSlug(path) {
   return path.split('/').pop().replace(/\.md$/i, '')
-}
-
-function normalizeTags(value) {
-  if (Array.isArray(value)) return value.map((t) => String(t).trim()).filter(Boolean)
-  if (!value) return []
-  return String(value)
-    .split(/[,，]/)
-    .map((t) => t.trim())
-    .filter(Boolean)
 }
 
 /** 去掉 Markdown 标记，用于自动生成摘要 */
@@ -52,7 +44,7 @@ function buildPost(path, raw) {
     title: data.title || slug,
     date: parseDate(data.date),
     dateText: formatDate(data.date),
-    tags: normalizeTags(data.tags),
+    category: data.category ? String(data.category).trim() : '',
     summary,
     body,
     readingTime: readingTime(body),
@@ -79,20 +71,12 @@ export function neighbors(slug) {
   }
 }
 
-export const allTags = (() => {
-  const map = new Map()
-  for (const post of allPosts) {
-    for (const tag of post.tags) {
-      map.set(tag, (map.get(tag) || 0) + 1)
-    }
-  }
-  return [...map.entries()]
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, 'zh-CN'))
-})()
+/** 导航里展示的分类，顺序以 site.config.js 为准 */
+export const categories = site.categories || []
 
-export function postsByTag(tag) {
-  return tag ? allPosts.filter((post) => post.tags.includes(tag)) : allPosts
+export function postsByCategory(name) {
+  if (!name) return allPosts
+  return allPosts.filter((post) => post.category === name)
 }
 
 /** 按年份分组，用于归档页 */

@@ -9,16 +9,14 @@
 
       <p v-if="post.summary" class="post-row__summary">{{ post.summary }}</p>
 
-      <div v-if="post.tags.length" class="post-row__tags">
+      <p v-if="post.category" class="post-row__category">
         <router-link
-          v-for="tag in post.tags"
-          :key="tag"
-          :to="`/tags/${encodeURIComponent(tag)}`"
-          class="tag"
+          :to="`/category/${encodeURIComponent(post.category)}`"
+          class="category"
         >
-          {{ tag }}
+          {{ post.category }}
         </router-link>
-      </div>
+      </p>
     </div>
   </article>
 </template>

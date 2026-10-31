@@ -15,9 +15,9 @@ const routes = [
     component: () => import('../views/Archive.vue'),
   },
   {
-    path: '/tags/:tag?',
-    name: 'tags',
-    component: () => import('../views/Tags.vue'),
+    path: '/category/:name',
+    name: 'category',
+    component: () => import('../views/Category.vue'),
   },
   {
     path: '/about',
@@ -46,7 +46,7 @@ const router = createRouter({
 const titles = {
   home: `${site.title} · ${site.description}`,
   archive: `归档 · ${site.title}`,
-  tags: `标签 · ${site.title}`,
+  tags: `分类 · ${site.title}`,
   about: `关于 · ${site.title}`,
   'not-found': `页面不存在 · ${site.title}`,
 }

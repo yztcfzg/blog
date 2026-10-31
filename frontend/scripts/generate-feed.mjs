@@ -50,7 +50,7 @@ function loadPosts() {
         slug,
         title: data.title || slug,
         date: parseDate(data.date),
-        tags: Array.isArray(data.tags) ? data.tags : data.tags ? [data.tags] : [],
+        category: data.category ? String(data.category).trim() : '',
         summary: data.summary || plain.slice(0, 120),
         draft: String(data.draft) === 'true',
       }
@@ -81,7 +81,7 @@ ${posts
       <guid isPermaLink="true">${escapeXml(postUrl(post.slug))}</guid>
       <pubDate>${post.date.toUTCString()}</pubDate>
       <description>${escapeXml(post.summary)}</description>
-${post.tags.map((tag) => `      <category>${escapeXml(tag)}</category>`).join('\n')}
+${post.category ? `      <category>${escapeXml(post.category)}</category>` : ''}
     </item>`
   )
   .join('\n')}
@@ -90,7 +90,12 @@ ${post.tags.map((tag) => `      <category>${escapeXml(tag)}</category>`).join('\
 `
 
 // ---------- sitemap ----------
-const staticPages = ['', 'archive', 'tags', 'about']
+const staticPages = [
+  '',
+  'archive',
+  'about',
+  ...(site.categories || []).map((name) => `category/${encodeURIComponent(name)}`),
+]
 const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${staticPages

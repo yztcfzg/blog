@@ -1,10 +1,11 @@
 /**
- * 新建一篇文章：npm run new "文章标题" slug-name
+ * 新建一篇文章：npm run new "文章标题" slug-name [分类]
  * 会生成 content/posts/<slug>.md，并带上 frontmatter 模板。
  */
 import { writeFileSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { site } from '../site.config.js'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const postsDir = join(here, '..', 'content', 'posts')
@@ -12,8 +13,9 @@ const postsDir = join(here, '..', 'content', 'posts')
 const title = process.argv[2]
 
 if (!title) {
-  console.error('用法：npm run new "文章标题" [slug]')
-  console.error('例如：npm run new "关于时间管理" time-management')
+  console.error('用法：npm run new "文章标题" [slug] [分类]')
+  console.error('例如：npm run new "京都的雨" kyoto-rain 旅游映像')
+  console.error(`可选分类：${(site.categories || []).join('、')}`)
   process.exit(1)
 }
 
@@ -31,10 +33,12 @@ if (existsSync(target)) {
   process.exit(1)
 }
 
+const category = process.argv[4] || site.categories?.[0] || ''
+
 const template = `---
 title: ${title}
 date: ${date}
-tags: []
+category: ${category}
 summary:
 ---
 

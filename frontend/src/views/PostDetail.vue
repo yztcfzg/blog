@@ -13,18 +13,14 @@
             <time :datetime="isoDate">{{ post.dateText }}</time>
             <span class="article__meta-dot" />
             <span>{{ post.readingTime }} 分钟阅读</span>
-            <template v-if="post.tags.length">
+            <template v-if="post.category">
               <span class="article__meta-dot" />
-              <span class="article__tags">
-                <router-link
-                  v-for="tag in post.tags"
-                  :key="tag"
-                  :to="`/tags/${encodeURIComponent(tag)}`"
-                  class="tag"
-                >
-                  {{ tag }}
-                </router-link>
-              </span>
+              <router-link
+                :to="`/category/${encodeURIComponent(post.category)}`"
+                class="category"
+              >
+                {{ post.category }}
+              </router-link>
             </template>
           </div>
         </header>
