@@ -72,36 +72,75 @@ function today() {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
-async function git(args, { proxy = null } = {}) {
+async function git(args, { proxy = null, sslBackend = null, timeout = 0 } = {}) {
   // 命令行 -c 优先级最高，能盖掉仓库里可能过期的 http.proxy；
   // 没有可用代理时传空值，避免沿用旧端口
-  const prefix = proxy
-    ? ['-c', `http.proxy=http://127.0.0.1:${proxy}`]
-    : ['-c', 'http.proxy=']
+  const prefix = [
+    '-c',
+    proxy ? `http.proxy=http://127.0.0.1:${proxy}` : 'http.proxy=',
+    // 传输卡住时早点放弃，别让发布按钮转好几分钟
+    '-c',
+    'http.lowSpeedLimit=1000',
+    '-c',
+    'http.lowSpeedTime=20',
+  ]
+
+  if (sslBackend) prefix.push('-c', `http.sslBackend=${sslBackend}`)
 
   const { stdout } = await execFileAsync('git', [...prefix, ...args], {
     cwd: ROOT,
     maxBuffer: 10 * 1024 * 1024,
     windowsHide: true,
     env: buildGitEnv(proxy),
+    ...(timeout ? { timeout } : {}),
   })
   return stdout.trim()
 }
 
-/** 推送：先探测代理，失败就强制重探一次（应对 Clash 重启换端口） */
-async function pushWithProxy() {
-  let proxy = await detectProxy()
-
+/** 快速判断某条通道能不能连上 GitHub，避免真实推送被干等二十多秒 */
+async function canReachGithub({ proxy = null, sslBackend = null, timeout }) {
   try {
-    await git(['push'], { proxy })
-  } catch (firstError) {
-    const retry = await detectProxy({ force: true })
-    if (!retry || retry === proxy) throw firstError
-    await git(['push'], { proxy: retry })
-    proxy = retry
+    await git(['ls-remote', '--heads', 'origin'], { proxy, sslBackend, timeout })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 推送：默认直连，不通再走代理。
+ *
+ * - 直连：开着 TUN/无墙时最快（实测 2s），也不会有 schannel 经代理的握手问题
+ * - 代理：端口不固定，每次现探；Git for Windows 的 schannel 经代理容易
+ *   "failed to receive handshake"，所以强制用 openssl 后端
+ * - 两条路都先做一次带硬超时的 ls-remote 预检，失败能立刻回退，
+ *   不会让「发布」按钮空转 20 秒才报错
+ */
+async function pushWithProxy() {
+  if (await canReachGithub({ proxy: null, timeout: 8000 })) {
+    await git(['push'], { proxy: null })
+    return null
   }
 
-  return proxy
+  let proxy = await detectProxy({ force: true })
+
+  for (let attempt = 0; attempt < 2 && proxy; attempt += 1) {
+    if (await canReachGithub({ proxy, sslBackend: 'openssl', timeout: 20000 })) {
+      await git(['push'], { proxy, sslBackend: 'openssl' })
+      return proxy
+    }
+
+    // Clash 重启会换端口，失败后强制重探一次
+    const next = await detectProxy({ force: true })
+    if (!next || next === proxy) break
+    proxy = next
+  }
+
+  throw bad(
+    '连不上 GitHub：直连和本机代理都没走通。\n' +
+      '如果是网络问题，打开 Clash 等代理后再点一次发布即可。',
+    502
+  )
 }
 
 async function fileExists(file) {

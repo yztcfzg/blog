@@ -91,7 +91,7 @@ async function refreshProxy(force = false) {
     const data = await api(`/api/proxy${force ? '?force=1' : ''}`)
     if (data.port) {
       els.proxyInfo.textContent = `代理 ${data.port}`
-      els.proxyInfo.title = `发布时经由 127.0.0.1:${data.port} 访问 GitHub`
+      els.proxyInfo.title = `检测到 127.0.0.1:${data.port} 可用；发布时优先直连，直连失败才走它`
     } else {
       els.proxyInfo.textContent = '直连'
       els.proxyInfo.title = '没有检测到可用代理，发布时会尝试直连'
